@@ -1,252 +1,133 @@
 {
-  "title": "AI Otomasyon Önericisi",
-  "config": {
-    "step": {
-      "user": {
-        "title": "AI Sağlayıcı Seçin",
-        "data": {
-          "provider": "AI Sağlayıcı"
+    "config": {
+        "step": {
+            "user": {
+                "title": "AI Automation Suggester Kurulumu",
+                "description": "Akıllı otomasyonlar oluşturmaya başlamak için AI sağlayıcınızı seçin.",
+                "data": {
+                    "provider": "AI Sağlayıcısını Seçin"
+                }
+            },
+            "provider_config": {
+                "title": "Sağlayıcıyı Yapılandır",
+                "description": "Seçtiğiniz sağlayıcı için API ayrıntılarını girin.",
+                "data": {
+                    "openai_api_key": "OpenAI API Anahtarı",
+                    "openai_model": "OpenAI Modeli (örn. gpt-4o)",
+                    "openai_temperature": "Yaratıcılık (Sıcaklık 0.0 - 1.0)",
+                    "google_api_key": "Google Gemini API Anahtarı",
+                    "google_model": "Google Modeli (örn. gemini-2.0-flash)",
+                    "google_temperature": "Sıcaklık",
+                    "anthropic_api_key": "Anthropic API Anahtarı",
+                    "anthropic_model": "Anthropic Modeli (örn. claude-3-5-sonnet)",
+                    "anthropic_temperature": "Sıcaklık",
+                    "localai_ip": "LocalAI IP Adresi",
+                    "localai_port": "LocalAI Portu",
+                    "localai_https": "HTTPS Kullan",
+                    "localai_model": "LocalAI Modeli",
+                    "localai_temperature": "Sıcaklık",
+                    "ollama_ip": "Ollama IP Adresi",
+                    "ollama_port": "Ollama Portu",
+                    "ollama_https": "HTTPS Kullan",
+                    "ollama_model": "Ollama Modeli",
+                    "ollama_temperature": "Sıcaklık",
+                    "ollama_disable_think": "'Think' etiketlerini devre dışı bırak (DeepSeek için)",
+                    "openai_azure_api_key": "Azure API Anahtarı",
+                    "openai_azure_endpoint": "Azure Uç Noktası (örn. my-resource.openai.azure.com)",
+                    "openai_azure_deployment_id": "Dağıtım Kimliği",
+                    "openai_azure_api_version": "API Sürümü (örn. 2024-02-15-preview)",
+                    "openai_azure_temperature": "Sıcaklık",
+                    "groq_api_key": "Groq API Anahtarı",
+                    "groq_model": "Groq Modeli",
+                    "groq_temperature": "Sıcaklık",
+                    "mistral_api_key": "Mistral API Anahtarı",
+                    "mistral_model": "Mistral Modeli",
+                    "mistral_temperature": "Sıcaklık",
+                    "perplexity_api_key": "Perplexity API Anahtarı",
+                    "perplexity_model": "Perplexity Modeli",
+                    "perplexity_temperature": "Sıcaklık",
+                    "openrouter_api_key": "OpenRouter API Anahtarı",
+                    "openrouter_model": "OpenRouter Modeli",
+                    "openrouter_temperature": "Sıcaklık",
+                    "openrouter_reasoning_max_tokens": "Muhakeme Maksimum Jetonları",
+                    "generic_openai_api_key": "API Anahtarı (İsteğe bağlı)",
+                    "generic_openai_api_endpoint": "Temel URL (örn. http://192.168.1.5:1234/v1)",
+                    "generic_openai_model": "Model Adı",
+                    "generic_openai_temperature": "Sıcaklık",
+                    "custom_openai_api_key": "Özel API Anahtarı",
+                    "custom_openai_endpoint": "Özel Uç Nokta URL'si",
+                    "custom_openai_model": "Özel Model",
+                    "custom_openai_temperature": "Sıcaklık"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Bağlanılamadı",
+            "invalid_auth": "Geçersiz kimlik doğrulama",
+            "unknown": "Beklenmeyen hata"
+        },
+        "abort": {
+            "already_configured": "Cihaz zaten yapılandırılmış"
         }
-      },
-      "openai": {
-        "title": "OpenAI Yapılandırması",
-        "data": {
-          "openai_api_key": "OpenAI API Anahtarı",
-          "openai_model": "OpenAI Modeli",
-          "openai_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "anthropic": {
-        "title": "Anthropic Yapılandırması",
-        "data": {
-          "anthropic_api_key": "Anthropic API Anahtarı",
-          "anthropic_model": "Anthropic Modeli",
-          "anthropic_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "google": {
-        "title": "Google Yapılandırması",
-        "data": {
-          "google_api_key": "Google API Anahtarı",
-          "google_model": "Google Modeli",
-          "google_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "groq": {
-        "title": "Groq Yapılandırması",
-        "data": {
-          "groq_api_key": "Groq API Anahtarı",
-          "groq_model": "Groq Modeli",
-          "groq_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "localai": {
-        "title": "LocalAI Yapılandırması",
-        "data": {
-          "localai_ip": "LocalAI IP Adresi",
-          "localai_port": "LocalAI Port",
-          "localai_https": "LocalAI için HTTPS Kullan",
-          "localai_model": "LocalAI Modeli",
-          "localai_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "ollama": {
-        "title": "Ollama Yapılandırması",
-        "data": {
-          "ollama_ip": "Ollama IP Adresi",
-          "ollama_port": "Ollama Port",
-          "ollama_https": "Ollama için HTTPS Kullan",
-          "ollama_model": "Ollama Modeli",
-          "ollama_temperature": "Sıcaklık",
-          "ollama_disable_think": "Düşünme Modunu Devre Dışı Bırak (Ollama)",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "custom_openai": {
-        "title": "Özel OpenAI Yapılandırması",
-        "data": {
-          "custom_openai_endpoint": "Özel OpenAI Uç Noktası",
-          "custom_openai_api_key": "Özel OpenAI API Anahtarı (İsteğe Bağlı)",
-          "custom_openai_model": "Özel OpenAI Modeli",
-          "custom_openai_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "mistral": {
-        "title": "Mistral AI Yapılandırması",
-        "data": {
-          "mistral_api_key": "Mistral API Anahtarı",
-          "mistral_model": "Mistral Modeli",
-          "mistral_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "perplexity": {
-        "title": "Perplexity AI Yapılandırması",
-        "data": {
-          "perplexity_api_key": "Perplexity API Anahtarı",
-          "perplexity_model": "Perplexity Modeli",
-          "perplexity_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "openrouter": {
-        "title": "OpenRouter Yapılandırması",
-        "data": {
-          "openrouter_api_key": "OpenRouter API Anahtarı",
-          "openrouter_model": "OpenRouter Modeli",
-          "openrouter_reasoning_max_tokens": "OpenRouter Akıl Yürütme Maks Token",
-          "openrouter_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "openai_azure": {
-        "title": "OpenAI Azure Yapılandırması",
-        "data": {
-          "openai_azure_api_key": "Azure OpenAI API Anahtarı",
-          "openai_azure_deployment_id": "Azure Dağıtım Kimliği",
-          "openai_azure_endpoint": "Azure Uç Noktası",
-          "openai_azure_api_version": "Azure API Sürümü",
-          "openai_azure_temperature": "Sıcaklık",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      },
-      "generic_openai": {
-        "title": "Genel OpenAI Yapılandırması",
-        "data": {
-          "generic_openai_api_endpoint": "Genel OpenAI API Tam URL (sonunda 'completions' olmalı)",
-          "generic_openai_api_key": "Genel OpenAI API Anahtarı (İsteğe Bağlı)",
-          "generic_openai_model": "Genel OpenAI Modeli",
-          "generic_openai_temperature": "Sıcaklık",
-          "generic_openai_validation_endpoint": "Doğrulama URL'si (sonunda 'models' olmalı)",
-          "generic_openai_enable_validation": "Doğrulamayı Etkinleştir",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        }
-      }
     },
-    "error": {
-      "api_error": "API doğrulaması başarısız oldu: {error_message}",
-      "cannot_connect": "Bağlantı kurulamadı. Lütfen ayarlarınızı ve ağ bağlantınızı kontrol edin.",
-      "unknown": "Bilinmeyen bir hata oluştu. Lütfen ayrıntılar için günlükleri kontrol edin."
-    },
-    "abort": {
-      "already_configured": "Bu AI sağlayıcı zaten yapılandırılmış. Entegrasyonlar sayfasından düzenleyebilirsiniz."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "AI Otomasyon Önericisi Seçenekleri",
-        "data": {
-          "openai_api_key": "OpenAI API Anahtarı",
-          "openai_model": "OpenAI Modeli",
-          "openai_temperature": "Sıcaklık (OpenAI)",
-          "anthropic_api_key": "Anthropic API Anahtarı",
-          "anthropic_model": "Anthropic Modeli",
-          "anthropic_temperature": "Sıcaklık (Anthropic)",
-          "google_api_key": "Google API Anahtarı",
-          "google_model": "Google Modeli",
-          "google_temperature": "Sıcaklık (Google)",
-          "groq_api_key": "Groq API Anahtarı",
-          "groq_model": "Groq Modeli",
-          "groq_temperature": "Sıcaklık (Groq)",
-          "localai_ip": "LocalAI IP Adresi",
-          "localai_port": "LocalAI Port",
-          "localai_https": "LocalAI için HTTPS Kullan",
-          "localai_model": "LocalAI Modeli",
-          "localai_temperature": "Sıcaklık (LocalAI)",
-          "ollama_ip": "Ollama IP Adresi",
-          "ollama_port": "Ollama Port",
-          "ollama_https": "Ollama için HTTPS Kullan",
-          "ollama_model": "Ollama Modeli",
-          "ollama_temperature": "Sıcaklık (Ollama)",
-          "ollama_disable_think": "Düşünme Modunu Devre Dışı Bırak (Ollama)",
-          "custom_openai_endpoint": "Özel OpenAI Uç Noktası",
-          "custom_openai_api_key": "Özel OpenAI API Anahtarı",
-          "custom_openai_model": "Özel OpenAI Modeli",
-          "custom_openai_temperature": "Sıcaklık (Özel OpenAI)",
-          "mistral_api_key": "Mistral API Anahtarı",
-          "mistral_model": "Mistral Modeli",
-          "mistral_temperature": "Sıcaklık (Mistral AI)",
-          "perplexity_api_key": "Perplexity API Anahtarı",
-          "perplexity_model": "Perplexity Modeli",
-          "perplexity_temperature": "Sıcaklık (Perplexity AI)",
-          "openrouter_api_key": "OpenRouter API Anahtarı",
-          "openrouter_model": "OpenRouter Modeli",
-          "openrouter_reasoning_max_tokens": "OpenRouter Akıl Yürütme Maks Token",
-          "openrouter_temperature": "Sıcaklık (OpenRouter)",
-          "openai_azure_api_key": "Azure OpenAI API Anahtarı",
-          "openai_azure_deployment_id": "Azure Dağıtım Kimliği",
-          "openai_azure_endpoint": "Azure Uç Noktası",
-          "openai_azure_api_version": "Azure API Sürümü",
-          "openai_azure_temperature": "Sıcaklık (OpenAI Azure)",
-          "generic_openai_api_endpoint": "Genel OpenAI API Tam URL (sonunda 'completions' olmalı)",
-          "generic_openai_api_key": "Genel OpenAI API Anahtarı",
-          "generic_openai_model": "Genel OpenAI Modeli",
-          "generic_openai_temperature": "Sıcaklık (Genel OpenAI)",
-          "generic_openai_validation_endpoint": "Doğrulama URL'si (Genel OpenAI, sonunda 'models' olmalı)",
-          "generic_openai_enable_validation": "Doğrulamayı Etkinleştir (Genel OpenAI)",
-          "max_input_tokens": "Maksimum Girdi Token",
-          "max_output_tokens": "Maksimum Çıktı Token"
-        },
-        "description": "AI sağlayıcılarınız için ayarları düzenleyin. Yapılandırılmış sağlayıcınızla ilgili alanlar kullanılacaktır. Token limitleri gibi ortak ayarlar her sağlayıcı için ayrı ayrı yapılandırılır."
-      }
-    },
-    "error": {
-      "invalid_input": "Bir veya daha fazla değer geçersiz."
-    }
-  },
-  "services": {
-    "generate_suggestions": {
-      "name": "Öneri Oluştur",
-      "description": "AI otomasyon önerilerini manuel olarak tetikleyin.",
-      "fields": {
-        "provider_config": {
-          "name": "Sağlayıcı Yapılandırması",
-          "description": "Hangi sağlayıcı yapılandırmasının kullanılacağı (birden fazla varsa)"
-        },
-        "custom_prompt": {
-          "name": "Özel İstem",
-          "description": "Varsayılan sistem istemini geçersiz kılmak veya önerileri belirli temalara yönlendirmek için isteğe bağlı özel istem"
-        },
-        "all_entities": {
-          "name": "Tüm Varlıkları Değerlendir",
-          "description": "Doğruysa, sadece yeni varlıklar yerine tüm varlıkları değerlendirir."
-        },
-        "domains": {
-          "name": "Alan Adları",
-          "description": "Değerlendirilecek alan adlarının listesi. Boşsa, tüm alan adları değerlendirilir."
-        },
-        "entity_limit": {
-          "name": "Varlık Limiti",
-          "description": "Değerlendirilecek maksimum varlık sayısı (rastgele seçilir)."
-        },
-        "automation_read_yaml": {
-          "name": "'automations.yaml' dosyasını oku",
-          "description": "'automations.yaml' dosyasında bulunan otomasyonların YAML kodunu okur ve ekler. Bu işlem çok fazla girdi token'ı kullanır, büyük bağlam penceresine sahip modellerle (örn. Gemini) dikkatli kullanın."
-        },
-        "automation_limit": {
-          "name": "Otomasyon Limiti",
-          "description": "Analiz edilecek maksimum otomasyon sayısı (varsayılan: 100)."
+    "options": {
+        "step": {
+            "init": {
+                "title": "Ayarlar",
+                "data": {
+                    "max_tokens": "Maks Token (Eski)",
+                    "max_input_tokens": "Maks Giriş Tokenları",
+                    "max_output_tokens": "Maks Çıkış Tokenları",
+                    "openai_temperature": "Sıcaklık"
+                }
+            }
         }
-      }
+    },
+    "entity": {
+        "sensor": {
+            "suggestions": {
+                "name": "Yapay Zeka Önerileri",
+                "state_attributes": {
+                    "suggestions_list": {
+                        "name": "Öneri Listesi"
+                    },
+                    "last_update": {
+                        "name": "Son Güncelleme"
+                    },
+                    "provider": {
+                        "name": "Sağlayıcı"
+                    }
+                }
+            },
+            "status": {
+                "name": "Yapay Zeka Durumu",
+                "state": {
+                    "connected": "Bağlı",
+                    "disconnected": "Bağlantı Kesildi",
+                    "error": "Hata",
+                    "initializing": "Başlatılıyor"
+                }
+            }
+        }
+    },
+    "services": {
+        "generate_suggestions": {
+            "name": "Öneriler Oluştur",
+            "description": "Akıllı evinizi analiz etmek ve yeni otomasyon fikirleri, düzeltmeler veya taslaklar (blueprints) oluşturmak için yapay zekayı tetikleyin. Daha önce reddedilen önerilerden kaçınmak için hafızayı kullanır.",
+            "fields": {
+                "custom_prompt": {
+                    "name": "Özel Komut",
+                    "description": "Yapay zeka için özel talimatlar (örn. 'Hareket sensörleri için bir taslak oluştur' veya 'Işık otomasyonunu düzelt')."
+                },
+                "entity_limit": {
+                    "name": "Varlık Sınırı",
+                    "description": "Yapay zekaya gönderilecek maksimum varlık sayısı (Daha yüksek = daha fazla bağlam ancak daha yavaş/pahalı)."
+                },
+                "scan_all_entities": {
+                    "name": "Tüm Varlıkları Tara",
+                    "description": "Yalnızca yakın zamanda güncellenenler yerine tüm varlıkların tam taramasını zorla (ilk çalıştırma veya hata ayıklama için iyi)."
+                }
+            }
+        }
     }
-  }
 }

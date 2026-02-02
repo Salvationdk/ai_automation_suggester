@@ -1,4 +1,11 @@
-"""The AI Automation Suggester integration."""
+"""The AI Automation Suggester integration.
+
+Changelog:
+- Registered new HTTP API views: `AIAutomationSuggestionsView` and `AIAutomationActionView`.
+- Updated suggestions view to parse and return the list of JSON suggestions from the coordinator.
+- Added API support for accepting/declining suggestions directly from the dashboard card.
+"""
+
 import logging
 import uuid
 from datetime import datetime

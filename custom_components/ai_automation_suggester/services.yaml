@@ -17,7 +17,7 @@ generate_suggestions:
           min: 1
           max: 1000
           mode: box
-    scan_all_entities:
+    all_entities:
       name: Scan All Entities
       description: Force a full re-scan of all entities instead of just recently updated ones.
       default: false

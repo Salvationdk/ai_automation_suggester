@@ -1,0 +1,133 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Opsætning af AI Automation Suggester",
+                "description": "Vælg din AI-udbyder for at begynde at generere smarte automatiseringer.",
+                "data": {
+                    "provider": "Vælg AI-udbyder"
+                }
+            },
+            "provider_config": {
+                "title": "Konfigurer Udbyder",
+                "description": "Indtast API-detaljerne for din valgte udbyder.",
+                "data": {
+                    "openai_api_key": "OpenAI API-nøgle",
+                    "openai_model": "OpenAI Model (f.eks. gpt-4o)",
+                    "openai_temperature": "Kreativitet (Temperatur 0.0 - 1.0)",
+                    "google_api_key": "Google Gemini API-nøgle",
+                    "google_model": "Google Model (f.eks. gemini-2.0-flash)",
+                    "google_temperature": "Temperatur",
+                    "anthropic_api_key": "Anthropic API-nøgle",
+                    "anthropic_model": "Anthropic Model (f.eks. claude-3-5-sonnet)",
+                    "anthropic_temperature": "Temperatur",
+                    "localai_ip": "LocalAI IP-adresse",
+                    "localai_port": "LocalAI Port",
+                    "localai_https": "Brug HTTPS",
+                    "localai_model": "LocalAI Model",
+                    "localai_temperature": "Temperatur",
+                    "ollama_ip": "Ollama IP-adresse",
+                    "ollama_port": "Ollama Port",
+                    "ollama_https": "Brug HTTPS",
+                    "ollama_model": "Ollama Model",
+                    "ollama_temperature": "Temperatur",
+                    "ollama_disable_think": "Deaktiver 'Think' tags (til DeepSeek)",
+                    "openai_azure_api_key": "Azure API-nøgle",
+                    "openai_azure_endpoint": "Azure Endpoint (f.eks. min-ressource.openai.azure.com)",
+                    "openai_azure_deployment_id": "Deployment ID",
+                    "openai_azure_api_version": "API Version (f.eks. 2024-02-15-preview)",
+                    "openai_azure_temperature": "Temperatur",
+                    "groq_api_key": "Groq API-nøgle",
+                    "groq_model": "Groq Model",
+                    "groq_temperature": "Temperatur",
+                    "mistral_api_key": "Mistral API-nøgle",
+                    "mistral_model": "Mistral Model",
+                    "mistral_temperature": "Temperatur",
+                    "perplexity_api_key": "Perplexity API-nøgle",
+                    "perplexity_model": "Perplexity Model",
+                    "perplexity_temperature": "Temperatur",
+                    "openrouter_api_key": "OpenRouter API-nøgle",
+                    "openrouter_model": "OpenRouter Model",
+                    "openrouter_temperature": "Temperatur",
+                    "openrouter_reasoning_max_tokens": "Ræsonnering Maks. Tokens",
+                    "generic_openai_api_key": "API-nøgle (Valgfri)",
+                    "generic_openai_api_endpoint": "Base URL (f.eks. http://192.168.1.5:1234/v1)",
+                    "generic_openai_model": "Modelnavn",
+                    "generic_openai_temperature": "Temperatur",
+                    "custom_openai_api_key": "Brugerdefineret API-nøgle",
+                    "custom_openai_endpoint": "Brugerdefineret Endpoint URL",
+                    "custom_openai_model": "Brugerdefineret Model",
+                    "custom_openai_temperature": "Temperatur"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Kunne ikke oprette forbindelse",
+            "invalid_auth": "Ugyldig godkendelse",
+            "unknown": "Uventet fejl"
+        },
+        "abort": {
+            "already_configured": "Enheden er allerede konfigureret"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Indstillinger",
+                "data": {
+                    "max_tokens": "Max Tokens (Forældet)",
+                    "max_input_tokens": "Maks. Input Tokens",
+                    "max_output_tokens": "Maks. Output Tokens",
+                    "openai_temperature": "Temperatur"
+                }
+            }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "suggestions": {
+                "name": "AI Forslag",
+                "state_attributes": {
+                    "suggestions_list": {
+                        "name": "Forslagsliste"
+                    },
+                    "last_update": {
+                        "name": "Sidst Opdateret"
+                    },
+                    "provider": {
+                        "name": "Udbyder"
+                    }
+                }
+            },
+            "status": {
+                "name": "AI Status",
+                "state": {
+                    "connected": "Tilsluttet",
+                    "disconnected": "Afbrudt",
+                    "error": "Fejl",
+                    "initializing": "Initialiserer"
+                }
+            }
+        }
+    },
+    "services": {
+        "generate_suggestions": {
+            "name": "Generer Forslag",
+            "description": "Få AI'en til at analysere dit smarte hjem og generere nye automatiseringsidéer, rettelser eller blueprints. Bruger hukommelse til at undgå tidligere afviste forslag.",
+            "fields": {
+                "custom_prompt": {
+                    "name": "Brugerdefineret Prompt",
+                    "description": "Specifikke instruktioner til AI'en (f.eks. 'Fokuser på energibesparelse' eller 'Fix lysautomatiseringen i køkkenet')."
+                },
+                "entity_limit": {
+                    "name": "Enhedsgrænse",
+                    "description": "Maksimalt antal enheder der sendes til AI'en (Højere tal = mere kontekst men langsommere/dyrere)."
+                },
+                "scan_all_entities": {
+                    "name": "Scan Alle Enheder",
+                    "description": "Tving en fuld scanning af alle enheder i stedet for kun de nyligt opdaterede (godt til første kørsel eller fejlfinding)."
+                }
+            }
+        }
+    }
+}

@@ -2,11 +2,11 @@
 """Coordinator for AI Automation Suggester.
 
 Changelog:
-- Implemented structured JSON output format for AI responses to support multiple suggestions.
-- Added 'Smart Selection' logic: Entities are now sorted by 'last_updated' to prioritize active devices.
-- Added filtering to exclude 'unavailable' or 'unknown' entities from the prompt to save tokens.
-- Updated System Prompt to enforce strict JSON structure.
-- Added robust JSON parsing with fallback regex to extract code blocks.
+- Added MEMORY: Loads/Saves user dislikes to 'ai_suggester_memory.json'.
+- Added BLUEPRINTS: Prompt updated to request Blueprints logic.
+- Added SELF-HEALING: Scans for 'unavailable' entities and requests fixes.
+- Maintained JSON output and Smart Selection.
+- Includes ALL provider methods.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
 import random
 import re
@@ -36,11 +37,23 @@ from .const import *
 
 _LOGGER = logging.getLogger(__name__)
 
+# Filename for memory storage
+MEMORY_FILENAME = "ai_suggester_memory.json"
+
 # ─────────────────────────────────────────────────────────────
-# JSON System Prompt
+# JSON System Prompt (Updated for Memory, Blueprints & Fixes)
 # ─────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """You are an intelligent Home Assistant expert.
-Your goal is to analyze entities and existing automations to suggest IMPROVEMENTS or NEW automations.
+SYSTEM_PROMPT = """You are an expert Home Assistant Architect and Repair Technician.
+
+Your tasks:
+1. **Analyze** the provided entities and existing automations.
+2. **Repair**: If entities are listed as 'unavailable' or automations seem broken, suggest FIXES first.
+3. **Innovate**: Suggest NEW automations or Improvements based on the user's devices.
+4. **Blueprints**: If a logic pattern is reusable (e.g., motion light), create a BLUEPRINT instead of a standard automation.
+
+MEMORY / CONTEXT:
+The user has previously REJECTED suggestions related to: {dislikes}.
+DO NOT suggest these topics again.
 
 IMPORTANT: You must output your response in strict JSON format.
 Do not output any markdown text outside the JSON structure.
@@ -48,24 +61,24 @@ Do not output any markdown text outside the JSON structure.
 Output format:
 [
   {
-    "title": "Short title of the automation",
-    "description": "Explanation of what this does and why it is useful.",
-    "type": "new",
-    "yaml": "alias: ... (The full valid YAML automation code)"
+    "title": "Fix for Unavailable Light",
+    "description": "The kitchen light appears unavailable. This automation notifies you...",
+    "type": "fix",
+    "yaml": "..."
   },
   {
-    "title": "Fix for Hallway Light",
-    "description": "The existing automation was missing a condition...",
-    "type": "improvement",
-    "yaml": "..."
+    "title": "Motion Light Blueprint",
+    "description": "A reusable blueprint for any room with a motion sensor.",
+    "type": "blueprint",
+    "yaml": "blueprint: ..."
+  },
+  {
+    "title": "Evening Relax Mode",
+    "description": "Dims lights when TV is on.",
+    "type": "new",
+    "yaml": "alias: ..."
   }
 ]
-
-For each entity provided:
-1. Analyze its function (light, sensor, lock, etc.).
-2. Suggest 1-3 high-quality automations.
-3. If an existing automation is provided, analyze it for errors or optimizations.
-4. Ensure the YAML is valid Home Assistant automation syntax.
 """
 
 # =============================================================================
@@ -107,6 +120,9 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         self.entity_registry: er.EntityRegistry | None = None
         self.area_registry: ar.AreaRegistry | None = None
 
+        # Memory Cache
+        self._memory_cache = {"dislikes": []}
+
     def _opt(self, key: str, default=None):
         """Return config value with options priority."""
         return self.entry.options.get(key, self.entry.data.get(key, default))
@@ -126,13 +142,50 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         self.device_registry = dr.async_get(self.hass)
         self.entity_registry = er.async_get(self.hass)
         self.area_registry = ar.async_get(self.hass)
+        # Load memory on startup
+        await self._load_memory()
 
     async def async_shutdown(self):
         return
 
-    # ---------------------------------------------------------------------
-    # Main polling routine (Updated for JSON)
-    # ---------------------------------------------------------------------
+    # ─────────────────────────────────────────────────────────────
+    # MEMORY OPERATIONS
+    # ─────────────────────────────────────────────────────────────
+    async def _load_memory(self):
+        """Load memory from JSON file."""
+        path = self.hass.config.path(MEMORY_FILENAME)
+        if os.path.exists(path):
+            try:
+                def load():
+                    with open(path, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+                self._memory_cache = await self.hass.async_add_executor_job(load)
+            except Exception as e:
+                _LOGGER.error(f"Failed to load AI memory: {e}")
+                self._memory_cache = {"dislikes": []}
+
+    async def add_dislike(self, suggestion_text: str):
+        """Add a rejected suggestion to memory."""
+        # Clean text slightly to keep memory small (take first 100 chars)
+        summary = suggestion_text[:100] if suggestion_text else "Unknown"
+        if summary not in self._memory_cache.get("dislikes", []):
+            self._memory_cache.setdefault("dislikes", []).append(summary)
+            await self._save_memory()
+
+    async def _save_memory(self):
+        """Save memory to JSON file."""
+        path = self.hass.config.path(MEMORY_FILENAME)
+        try:
+            def save():
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(self._memory_cache, f, indent=2)
+            await self.hass.async_add_executor_job(save)
+        except Exception as e:
+            _LOGGER.error(f"Failed to save AI memory: {e}")
+
+    # ─────────────────────────────────────────────────────────────
+    # Main Polling Logic
+    # ─────────────────────────────────────────────────────────────
     async def _async_update_data(self) -> dict:
         try:
             now = datetime.now()
@@ -141,6 +194,8 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
 
             # -------------------------------------------------- gather entities
             current: dict[str, dict] = {}
+            unavailable_entities: list[str] = [] # For Self-Healing
+
             for eid in self.hass.states.async_entity_ids():
                 if (
                     self.selected_domains
@@ -149,8 +204,9 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                     continue
                 st = self.hass.states.get(eid)
                 if st:
-                    # Filter unavailable to save tokens
+                    # Self-Healing: Track unavailable entities explicitly
                     if st.state in ["unavailable", "unknown"]:
+                        unavailable_entities.append(f"{eid} (State: {st.state})")
                         continue
 
                     current[eid] = {
@@ -168,11 +224,13 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                     k: v for k, v in current.items() if k not in self.previous_entities
                 }
 
-            if not picked:
+            # If no entities changed AND no broken entities found, skip
+            if not picked and not unavailable_entities:
                 self.previous_entities = current
                 return self.data
 
-            prompt = await self._build_prompt(picked)
+            # Build Prompt (passing unavailable entities)
+            prompt = await self._build_prompt(picked, unavailable_entities)
             response = await self._dispatch(prompt)
 
             suggestions_list = []
@@ -184,7 +242,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 if suggestions_list:
                     persistent_notification.async_create(
                         self.hass,
-                        message=f"Received {len(suggestions_list)} new automation suggestions.",
+                        message=f"Received {len(suggestions_list)} suggestions (Fixes/Blueprints/New).",
                         title="AI Automation Suggester",
                         notification_id=f"ai_automation_suggestions_{now.timestamp()}",
                     )
@@ -241,10 +299,10 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Failed to parse JSON from AI response: %s", e)
         return []
 
-    # ---------------------------------------------------------------------
-    # Prompt builder (With Smart Sorting)
-    # ---------------------------------------------------------------------
-    async def _build_prompt(self, entities: dict) -> str:
+    # ─────────────────────────────────────────────────────────────
+    # Prompt builder (With Memory & Self-Healing)
+    # ─────────────────────────────────────────────────────────────
+    async def _build_prompt(self, entities: dict, unavailable: list[str]) -> str:
         """Build the prompt based on entities and automations."""
         MAX_ATTR = 500
         MAX_AUTOM = getattr(self, "automation_limit", 100)
@@ -265,48 +323,14 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             attr_str = str(meta["attributes"])
             if len(attr_str) > MAX_ATTR:
                 attr_str = f"{attr_str[:MAX_ATTR]}...(truncated)"
-
-            ent_entry = (
-                self.entity_registry.async_get(eid) if self.entity_registry else None
-            )
-            dev_entry = (
-                self.device_registry.async_get(ent_entry.device_id)
-                if ent_entry and ent_entry.device_id
-                else None
-            )
-
-            area_id = (
-                ent_entry.area_id
-                if ent_entry and ent_entry.area_id
-                else (dev_entry.area_id if dev_entry else None)
-            )
-            area_name = "Unknown Area"
-            if area_id and self.area_registry:
-                ar_entry = self.area_registry.async_get_area(area_id)
-                if ar_entry:
-                    area_name = ar_entry.name
-
+            
+            # Simple entity block building to save tokens
             block = (
                 f"Entity: {eid}\n"
                 f"Friendly Name: {meta['friendly_name']}\n"
                 f"Domain: {domain}\n"
                 f"State: {meta['state']}\n"
                 f"Attributes: {attr_str}\n"
-                f"Area: {area_name}\n"
-            )
-
-            if dev_entry:
-                block += (
-                    "Device Info:\n"
-                    f"  Manufacturer: {dev_entry.manufacturer}\n"
-                    f"  Model: {dev_entry.model}\n"
-                    f"  Device Name: {dev_entry.name_by_user or dev_entry.name}\n"
-                    f"  Device ID: {dev_entry.id}\n"
-                )
-
-            block += (
-                f"Last Changed: {meta['last_changed']}\n"
-                f"Last Updated: {meta['last_updated']}\n"
                 "---\n"
             )
             ent_sections.append(block)
@@ -317,9 +341,27 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         if self.automation_read_file:
             autom_codes = await self._read_automations_file_method(MAX_AUTOM, MAX_ATTR)
 
+        # Inject Memory (Dislikes)
+        dislikes_str = ", ".join(self._memory_cache.get("dislikes", []))
+        if not dislikes_str:
+            dislikes_str = "None so far"
+
+        # Format the new System Prompt with memory
+        final_system_prompt = self.SYSTEM_PROMPT.format(dislikes=dislikes_str)
+
         builded_prompt = (
-            f"{self.SYSTEM_PROMPT}\n\n"
-            f"Here are the Entities (Recently Active):\n{''.join(ent_sections)}\n"
+            f"{final_system_prompt}\n\n"
+            f"Here are the Active Entities:\n{''.join(ent_sections)}\n"
+        )
+
+        # Inject Self-Healing data
+        if unavailable:
+            builded_prompt += (
+                "⚠️ BROKEN / UNAVAILABLE ENTITIES (Priority: Suggest Fixes):\n"
+                f"{', '.join(unavailable[:50])}\n\n"
+            )
+
+        builded_prompt += (
             "Existing Automations (Overview):\n"
             f"{''.join(autom_sections) if autom_sections else 'None found.'}\n\n"
         )
@@ -410,7 +452,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             return None
 
     # ---------------------------------------------------------------------
-    # Provider implementations (Originals preserved)
+    # Provider implementations
     # ---------------------------------------------------------------------
     async def _openai(self, prompt: str) -> str | None:
         try:

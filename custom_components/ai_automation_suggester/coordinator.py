@@ -1,5 +1,13 @@
 # custom_components/ai_automation_suggester/coordinator.py
-"""Coordinator for AI Automation Suggester."""
+"""Coordinator for AI Automation Suggester.
+
+Changelog:
+- Implemented structured JSON output format for AI responses to support multiple suggestions.
+- Added 'Smart Selection' logic: Entities are now sorted by 'last_updated' to prioritize active devices.
+- Added filtering to exclude 'unavailable' or 'unknown' entities from the prompt to save tokens.
+- Updated System Prompt to enforce strict JSON structure.
+- Added robust JSON parsing with fallback regex to extract code blocks.
+"""
 
 from __future__ import annotations
 

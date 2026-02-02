@@ -34,7 +34,7 @@ Restart Home Assistant.
 
 Go to Settings -> Devices & Services -> Add Integration.
 
-Search for AI Automation Suggester and configure your AI provider.
+Search for AI Automation Suggester and configure your AI provider (OpenAI, Gemini, Azure, etc.).
 
 📊 Dashboard Card
 

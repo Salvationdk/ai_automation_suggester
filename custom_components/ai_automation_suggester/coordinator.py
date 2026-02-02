@@ -3,7 +3,7 @@ Changelog:
 - Added MEMORY: Loads/Saves user dislikes to 'ai_suggester_memory.json'.
 - Added BLUEPRINTS: Prompt updated to request Blueprints logic.
 - Added SELF-HEALING: Scans for 'unavailable' entities and requests fixes.
-- Maintained JSON output and Smart Selection.
+- Robust JSON Repair: Fixes truncated/unterminated JSON strings.
 - Includes ALL provider methods.
 """
 from __future__ import annotations
@@ -78,7 +78,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         self.SYSTEM_PROMPT = SYSTEM_PROMPT
         self.scan_all = False
         self.selected_domains: list[str] = []
-        self.entity_limit = 200
+        self.entity_limit = 50 # Begrænses for at undgå for lange svar
         self.automation_read_file = False
         self.automation_limit = 100
 
@@ -166,7 +166,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 if suggestions_list:
                     persistent_notification.async_create(
                         self.hass,
-                        message=f"Received {len(suggestions_list)} suggestions.",
+                        message=f"Modtaget {len(suggestions_list)} forslag.",
                         title="AI Automation Suggester",
                         notification_id=f"ai_sug_msg_{now.timestamp()}",
                     )
@@ -187,21 +187,29 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             return self.data
 
     def _parse_json_response(self, response: str) -> list[dict]:
+        """Robust parsing med forsøg på at lukke afbrudte strenge."""
         try:
             return json.loads(response)
         except json.JSONDecodeError:
             pass
+
+        # Nød-reparation af JSON hvis AI'en blev afbrudt
+        cleaned = response.strip()
+        if not cleaned.endswith(']'):
+            if cleaned.count('"') % 2 != 0: cleaned += '"'
+            if not cleaned.endswith('}'): cleaned += '}'
+            if not cleaned.endswith(']'): cleaned += ']'
+
         try:
-            # Regex fixed to handle common AI formatting
-            match = re.search(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", response, re.IGNORECASE)
+            match = re.search(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", cleaned, re.IGNORECASE)
             if match:
                 return json.loads(match.group(1))
-            start, end = response.find('['), response.rfind(']')
+            start, end = cleaned.find('['), cleaned.rfind(']')
             if start != -1 and end != -1:
-                json_str = re.sub(r",\s*\]", "]", response[start:end+1])
+                json_str = re.sub(r",\s*\]", "]", cleaned[start:end+1])
                 return json.loads(json_str)
         except Exception as e:
-            _LOGGER.error("JSON Parse error: %s", e)
+            _LOGGER.error("JSON Parse fejl efter reparation: %s", e)
         return []
 
     async def _build_prompt(self, entities: dict, unavailable: list[str]) -> str:
@@ -249,11 +257,13 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         if provider not in providers: return None
         return await providers[provider](prompt)
 
+    # --- Provider Implementeringer ---
+
     async def _openai(self, prompt: str) -> str | None:
         try:
             api_key = self._opt(CONF_OPENAI_API_KEY)
             model = self._opt(CONF_OPENAI_MODEL, DEFAULT_MODELS["OpenAI"])
-            in_budget, out_budget = self._budgets()
+            _, out_budget = self._budgets()
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             body = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": out_budget}
             async with self.session.post(ENDPOINT_OPENAI, headers=headers, json=body, timeout=900) as resp:
@@ -273,7 +283,6 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 return res["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e: self._last_error = str(e); return None
 
-    # Andre udbydere (Anthropic, Groq, etc.) følger samme mønster...
     async def _anthropic(self, prompt: str) -> str | None:
         try:
             api_key = self._opt(CONF_ANTHROPIC_API_KEY)
@@ -308,24 +317,10 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 return res["message"]["content"]
         except Exception as e: self._last_error = str(e); return None
 
-    async def _openai_azure(self, prompt: str) -> str | None:
-        try:
-            base = self._opt(CONF_OPENAI_AZURE_ENDPOINT)
-            deployment = self._opt(CONF_OPENAI_AZURE_DEPLOYMENT_ID)
-            key = self._opt(CONF_OPENAI_AZURE_API_KEY)
-            ver = self._opt(CONF_OPENAI_AZURE_API_VERSION, "2025-01-01-preview")
-            url = f"https://{base}/openai/deployments/{deployment}/chat/completions?api-version={ver}"
-            headers = {"api-key": key, "Content-Type": "application/json"}
-            body = {"messages": [{"role": "user", "content": prompt}], "max_tokens": self._budgets()[1]}
-            async with self.session.post(url, headers=headers, json=body, timeout=900) as resp:
-                res = await resp.json()
-                return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
     async def _localai(self, prompt: str) -> str | None:
         try:
             ip, port = self._opt(CONF_LOCALAI_IP_ADDRESS), self._opt(CONF_LOCALAI_PORT)
             model = self._opt(CONF_LOCALAI_MODEL, DEFAULT_MODELS["LocalAI"])
-            # Vi antager http medmindre andet er defineret
             endpoint = f"http://{ip}:{port}/v1/chat/completions"
             body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
             async with self.session.post(endpoint, json=body, timeout=900) as resp:
@@ -379,6 +374,20 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 return res["choices"][0]["message"]["content"]
         except Exception as e: self._last_error = str(e); return None
 
+    async def _openai_azure(self, prompt: str) -> str | None:
+        try:
+            base = self._opt(CONF_OPENAI_AZURE_ENDPOINT)
+            deployment = self._opt(CONF_OPENAI_AZURE_DEPLOYMENT_ID)
+            key = self._opt(CONF_OPENAI_AZURE_API_KEY)
+            ver = self._opt(CONF_OPENAI_AZURE_API_VERSION, "2025-01-01-preview")
+            url = f"https://{base}/openai/deployments/{deployment}/chat/completions?api-version={ver}"
+            headers = {"api-key": key, "Content-Type": "application/json"}
+            body = {"messages": [{"role": "user", "content": prompt}], "max_tokens": self._budgets()[1]}
+            async with self.session.post(url, headers=headers, json=body, timeout=900) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
+        except Exception as e: self._last_error = str(e); return None
+
     async def _generic_openai(self, prompt: str) -> str | None:
         try:
             endpoint = self._opt(CONF_GENERIC_OPENAI_ENDPOINT)
@@ -391,3 +400,6 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
         except Exception as e: self._last_error = str(e); return None
+
+    async def async_shutdown(self):
+        pass

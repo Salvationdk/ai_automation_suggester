@@ -321,3 +321,73 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
         except Exception as e: self._last_error = str(e); return None
+    async def _localai(self, prompt: str) -> str | None:
+        try:
+            ip, port = self._opt(CONF_LOCALAI_IP_ADDRESS), self._opt(CONF_LOCALAI_PORT)
+            model = self._opt(CONF_LOCALAI_MODEL, DEFAULT_MODELS["LocalAI"])
+            # Vi antager http medmindre andet er defineret
+            endpoint = f"http://{ip}:{port}/v1/chat/completions"
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            async with self.session.post(endpoint, json=body, timeout=900) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
+        except Exception as e: self._last_error = str(e); return None
+
+    async def _mistral(self, prompt: str) -> str | None:
+        try:
+            api_key = self._opt(CONF_MISTRAL_API_KEY)
+            model = self._opt(CONF_MISTRAL_MODEL, DEFAULT_MODELS["Mistral AI"])
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            async with self.session.post(ENDPOINT_MISTRAL, headers=headers, json=body, timeout=900) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
+        except Exception as e: self._last_error = str(e); return None
+
+    async def _perplexity(self, prompt: str) -> str | None:
+        try:
+            api_key = self._opt(CONF_PERPLEXITY_API_KEY)
+            model = self._opt(CONF_PERPLEXITY_MODEL, DEFAULT_MODELS["Perplexity AI"])
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            async with self.session.post(ENDPOINT_PERPLEXITY, headers=headers, json=body, timeout=900) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
+        except Exception as e: self._last_error = str(e); return None
+
+    async def _openrouter(self, prompt: str) -> str | None:
+        try:
+            api_key = self._opt(CONF_OPENROUTER_API_KEY)
+            model = self._opt(CONF_OPENROUTER_MODEL, DEFAULT_MODELS["OpenRouter"])
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            async with self.session.post(ENDPOINT_OPENROUTER, headers=headers, json=body, timeout=900) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
+        except Exception as e: self._last_error = str(e); return None
+
+    async def _custom_openai(self, prompt: str) -> str | None:
+        try:
+            url = self._opt(CONF_CUSTOM_OPENAI_ENDPOINT)
+            api_key = self._opt(CONF_CUSTOM_OPENAI_API_KEY)
+            model = self._opt(CONF_CUSTOM_OPENAI_MODEL)
+            headers = {"Content-Type": "application/json"}
+            if api_key: headers["Authorization"] = f"Bearer {api_key}"
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            async with self.session.post(f"{url}/v1/chat/completions", headers=headers, json=body, timeout=900) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
+        except Exception as e: self._last_error = str(e); return None
+
+    async def _generic_openai(self, prompt: str) -> str | None:
+        try:
+            endpoint = self._opt(CONF_GENERIC_OPENAI_ENDPOINT)
+            api_key = self._opt(CONF_GENERIC_OPENAI_API_KEY)
+            model = self._opt(CONF_GENERIC_OPENAI_MODEL, "gpt-4o-mini")
+            headers = {"Content-Type": "application/json"}
+            if api_key: headers["Authorization"] = f"Bearer {api_key}"
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            async with self.session.post(endpoint, headers=headers, json=body, timeout=900) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
+        except Exception as e: self._last_error = str(e); return None

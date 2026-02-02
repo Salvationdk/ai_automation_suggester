@@ -3,8 +3,8 @@ Changelog:
 - Added MEMORY: Loads/Saves user dislikes to 'ai_suggester_memory.json'.
 - Added BLUEPRINTS: Prompt updated to request Blueprints logic.
 - Added SELF-HEALING: Scans for 'unavailable' entities and requests fixes.
-- Robust JSON Repair: Fixes truncated/unterminated JSON strings.
-- Includes ALL provider methods.
+- Robust JSON Repair: Advanced fallback to recover objects from truncated strings.
+- Includes ALL provider methods and fixed entity limits.
 """
 from __future__ import annotations
 from datetime import datetime
@@ -78,7 +78,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         self.SYSTEM_PROMPT = SYSTEM_PROMPT
         self.scan_all = False
         self.selected_domains: list[str] = []
-        self.entity_limit = 50 # Begrænses for at undgå for lange svar
+        self.entity_limit = 40  # Nedsat for at sikre stabile svar uden afbrydelser
         self.automation_read_file = False
         self.automation_limit = 100
 
@@ -187,29 +187,41 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             return self.data
 
     def _parse_json_response(self, response: str) -> list[dict]:
-        """Robust parsing med forsøg på at lukke afbrudte strenge."""
+        """Ekstra robust parsing der håndterer ufuldstændige strenge og JSON-fejl."""
         try:
             return json.loads(response)
         except json.JSONDecodeError:
             pass
 
-        # Nød-reparation af JSON hvis AI'en blev afbrudt
         cleaned = response.strip()
+        # Reparations-logik for afbrudte svar
         if not cleaned.endswith(']'):
-            if cleaned.count('"') % 2 != 0: cleaned += '"'
-            if not cleaned.endswith('}'): cleaned += '}'
-            if not cleaned.endswith(']'): cleaned += ']'
+            last_bracket = cleaned.rfind('}')
+            if last_bracket != -1:
+                cleaned = cleaned[:last_bracket + 1] + ']'
+            if cleaned.count('"') % 2 != 0:
+                cleaned += '"'
+            if not cleaned.endswith(']'):
+                cleaned += ']'
 
         try:
-            match = re.search(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", cleaned, re.IGNORECASE)
-            if match:
-                return json.loads(match.group(1))
-            start, end = cleaned.find('['), cleaned.rfind(']')
-            if start != -1 and end != -1:
-                json_str = re.sub(r",\s*\]", "]", cleaned[start:end+1])
-                return json.loads(json_str)
-        except Exception as e:
-            _LOGGER.error("JSON Parse fejl efter reparation: %s", e)
+            cleaned = re.sub(r",\s*\]", "]", cleaned)
+            cleaned = re.sub(r",\s*\}", "}", cleaned)
+            return json.loads(cleaned)
+        except Exception:
+            # Sidste udvej: Manuel udtrækning af objekter
+            found_objects = []
+            for obj_match in re.finditer(r"\{[\s\S]*?\}", cleaned):
+                try:
+                    obj = json.loads(obj_match.group(0))
+                    found_objects.append(obj)
+                except Exception:
+                    continue
+            if found_objects:
+                _LOGGER.info("Gendannede %s objekter fra beskadiget JSON", len(found_objects))
+                return found_objects
+        
+        _LOGGER.error("Kunne ikke parse eller reparere JSON-svar")
         return []
 
     async def _build_prompt(self, entities: dict, unavailable: list[str]) -> str:
@@ -228,10 +240,8 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         
         prompt = self.SYSTEM_PROMPT.format(dislikes=dislikes_str)
         prompt += f"\n\nActive Entities:\n{''.join(ent_sections)}\n"
-        
         if unavailable:
             prompt += f"⚠️ BROKEN ENTITIES: {', '.join(unavailable[:50])}\n\n"
-        
         prompt += f"Existing Automations:\n{''.join(autom_sections)}\n\n"
         prompt += "Output strictly in JSON."
         return prompt
@@ -256,8 +266,6 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         }
         if provider not in providers: return None
         return await providers[provider](prompt)
-
-    # --- Provider Implementeringer ---
 
     async def _openai(self, prompt: str) -> str | None:
         try:

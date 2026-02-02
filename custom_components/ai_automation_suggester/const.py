@@ -1,4 +1,9 @@
-"""Constants for the AI Automation Suggester integration."""
+"""Constants for the AI Automation Suggester integration.
+
+Changelog:
+- Updated default AI models to 2026 versions (Gemini 2.0 Flash, GPT-4o, Claude 3.7).
+- Refined model keys to match current API capabilities.
+"""
 
 # ─────────────────────────────────────────────────────────────
 # Core

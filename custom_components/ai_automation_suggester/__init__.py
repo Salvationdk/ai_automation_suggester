@@ -2,6 +2,7 @@
 import logging
 import uuid
 from datetime import datetime
+import json
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -25,15 +26,12 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate old config entry if necessary."""
-    _LOGGER.debug(f"async_migrate_entry {config_entry.version}")
     if config_entry.version < CONFIG_VERSION:
-        _LOGGER.debug(f"Migrating config entry from version {config_entry.version} to {CONFIG_VERSION}")
         new_data = {**config_entry.data}
         new_data.pop('scan_frequency', None)
         new_data.pop('initial_lag_time', None)
         config_entry.version = CONFIG_VERSION
         hass.config_entries.async_update_entry(config_entry, data=new_data)
-        _LOGGER.debug("Migration successful")
         return True
     return True
 
@@ -41,9 +39,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the AI Automation Suggester component."""
     hass.data.setdefault(DOMAIN, {})
 
-    # ─────────────────────────────────────────────────────────────
-    # Register API Views for Dashboard Card
-    # ─────────────────────────────────────────────────────────────
+    # Register API Views
     hass.http.register_view(AIAutomationSuggestionsView)
     hass.http.register_view(AIAutomationActionView)
 
@@ -57,7 +53,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         automation_read_yaml = call.data.get("automation_read_yaml", False)
         automation_limit = call.data.get("automation_limit", 100)
 
-        # Parse domains if provided as a string or dict
         if isinstance(domains, str):
             domains = [d.strip() for d in domains.split(',') if d.strip()]
         elif isinstance(domains, dict):
@@ -68,7 +63,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if provider_config:
                 coordinator = hass.data[DOMAIN].get(provider_config)
             else:
-                # Find first available coordinator if none specified
                 for entry_id, coord in hass.data[DOMAIN].items():
                     if isinstance(coord, AIAutomationCoordinator):
                         coordinator = coord
@@ -79,7 +73,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
             if custom_prompt:
                 original_prompt = coordinator.SYSTEM_PROMPT
-                coordinator.SYSTEM_PROMPT = f"{coordinator.SYSTEM_PROMPT}\n\nAdditional instructions:\n{custom_prompt}"
+                # Append custom prompt but keep the JSON instruction at the top
+                coordinator.SYSTEM_PROMPT = f"{coordinator.SYSTEM_PROMPT}\n\nAdditional User Context:\n{custom_prompt}"
             else:
                 original_prompt = None
 
@@ -98,14 +93,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 coordinator.selected_domains = []
                 coordinator.entity_limit = 200
                 coordinator.automation_read_file = False
-                coordinator.automation_limit = 100
 
         except KeyError:
             raise ServiceValidationError("Provider configuration not found")
         except Exception as err:
             raise ServiceValidationError(f"Failed to generate suggestions: {err}")
 
-    # Register the service
     hass.services.async_register(
         DOMAIN,
         SERVICE_GENERATE_SUGGESTIONS,
@@ -125,17 +118,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-        _LOGGER.debug(
-            "Setup complete for %s with provider %s",
-            entry.title,
-            entry.data.get(CONF_PROVIDER)
-        )
-
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
         @callback
         def handle_custom_event(event):
-            _LOGGER.debug("Received custom event '%s', triggering suggestions with all_entities=True", event.event_type)
             hass.async_create_task(coordinator_request_all_suggestions())
 
         async def coordinator_request_all_suggestions():
@@ -160,17 +146,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await coordinator.async_shutdown()
         return unload_ok
     except Exception as err:
-        _LOGGER.error("Error unloading entry: %s", err)
         return False
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
 
 
 # ─────────────────────────────────────────────────────────────
-# API Views classes
+# API Views classes (UPDATED FOR JSON LIST)
 # ─────────────────────────────────────────────────────────────
 
 class AIAutomationSuggestionsView(HomeAssistantView):
@@ -182,28 +166,33 @@ class AIAutomationSuggestionsView(HomeAssistantView):
     async def get(self, request):
         """Retrieve the latest suggestions from the coordinator."""
         hass = request.app["hass"]
-        suggestions_list = []
+        all_suggestions = []
 
-        # Iterate over all coordinators (providers) to gather suggestions
         if DOMAIN in hass.data:
             for entry_id, coordinator in hass.data[DOMAIN].items():
                 if isinstance(coordinator, AIAutomationCoordinator):
                     data = coordinator.data
-                    if data and data.get("yaml_block"):
-                        # Format for the card
-                        # Since the coordinator currently stores just one block, we wrap it.
-                        suggestion_entry = {
-                            "id": str(uuid.uuid4()), # Generate a temp ID for the UI
-                            "title": f"Suggestion from {data.get('provider', 'AI')}",
-                            "shortDescription": data.get("description", "")[:100] + "...",
-                            "detailedDescription": data.get("description", ""),
-                            "yamlCode": data.get("yaml_block", ""),
-                            "timestamp": str(data.get("last_update", "")),
-                            "showDetails": False
-                        }
-                        suggestions_list.append(suggestion_entry)
+                    # Access the new list key
+                    suggestions_list = data.get("suggestions_list", [])
+                    
+                    if isinstance(suggestions_list, list):
+                        for item in suggestions_list:
+                            if not isinstance(item, dict): continue
+                            
+                            suggestion_entry = {
+                                "id": str(uuid.uuid4()), # Dynamic ID for UI actions
+                                "title": item.get("title", "New Suggestion"),
+                                "shortDescription": item.get("description", "")[:100] + "...",
+                                "detailedDescription": item.get("description", ""),
+                                "yamlCode": item.get("yaml", ""),
+                                "type": item.get("type", "unknown"),
+                                "timestamp": str(data.get("last_update", "")),
+                                "provider": data.get("provider", "AI"),
+                                "showDetails": False
+                            }
+                            all_suggestions.append(suggestion_entry)
         
-        return self.json(suggestions_list)
+        return self.json(all_suggestions)
 
 class AIAutomationActionView(HomeAssistantView):
     """View to handle Accept/Decline actions from the card."""
@@ -214,21 +203,17 @@ class AIAutomationActionView(HomeAssistantView):
     async def post(self, request, action, suggestion_id):
         """Handle the action."""
         hass = request.app["hass"]
-        
-        # Log the action
         _LOGGER.info(f"UI Action received: {action} on suggestion {suggestion_id}")
 
         if action == "accept":
-            # In a future update, this could automatically save the YAML to automations.yaml
             persistent_notification.async_create(
                 hass,
-                message="You accepted an automation via the dashboard. Please copy the YAML manually for now, or check your automations file if auto-save is enabled.",
+                message="Code accepted. In the future this will auto-save to automations.yaml.",
                 title="Automation Accepted"
             )
-            return self.json({"success": True, "message": "Accepted"})
+            return self.json({"success": True})
         
         elif action == "decline":
-            # Just clear it from UI (frontend will handle refresh)
-            return self.json({"success": True, "message": "Declined"})
+            return self.json({"success": True})
 
         return self.json({"success": False, "error": "Invalid action"}, status_code=400)

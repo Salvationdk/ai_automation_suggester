@@ -15,7 +15,7 @@ INTEGRATION_NAME = "AI Automation Suggester"
 CONF_MAX_TOKENS = "max_tokens"
 DEFAULT_MAX_TOKENS = 500  # legacy default – used for both budgets if new keys absent
 
-# New, separate knobs (Issue #91)
+# New, separate knobs (Issue #91)
 CONF_MAX_INPUT_TOKENS = "max_input_tokens"  # how much of the prompt we keep
 CONF_MAX_OUTPUT_TOKENS = "max_output_tokens"  # how long the AI response may be
 
@@ -85,12 +85,6 @@ CONF_CUSTOM_OPENAI_TEMPERATURE = "custom_openai_temperature"
 CONF_MISTRAL_API_KEY = "mistral_api_key"
 CONF_MISTRAL_MODEL = "mistral_model"
 CONF_MISTRAL_TEMPERATURE = "mistral_temperature"
-MISTRAL_MODELS = [
-    "mistral-tiny",
-    "mistral-small",
-    "mistral-medium",
-    "mistral-large",
-]
 
 # Perplexity AI
 CONF_PERPLEXITY_API_KEY = "perplexity_api_key"
@@ -112,21 +106,21 @@ CONF_GENERIC_OPENAI_VALIDATION_ENDPOINT = "generic_openai_validation_endpoint"
 CONF_GENERIC_OPENAI_ENABLE_VALIDATION = "generic_openai_enable_validation"
 
 # ─────────────────────────────────────────────────────────────
-# Model defaults per provider
+# Model defaults per provider (UPDATED FOR 2026)
 # ─────────────────────────────────────────────────────────────
 DEFAULT_MODELS = {
-    "OpenAI": "gpt-4o-mini",
-    "OpenAI Azure": "gpt-4o-mini",
-    "Anthropic": "claude-3-7-sonnet-latest",
-    "Google": "gemini-2.0-flash",
-    "Groq": "llama3-8b-8192",
+    "OpenAI": "gpt-4o", 
+    "OpenAI Azure": "gpt-4o",
+    "Anthropic": "claude-3-7-sonnet-latest", # Eller nyere version
+    "Google": "gemini-2.0-flash", # Opdateret til en relevant flash-model
+    "Groq": "llama3-70b-8192",
     "LocalAI": "llama3",
-    "Ollama": "llama2",
-    "Custom OpenAI": "gpt-3.5-turbo",
-    "Mistral AI": "mistral-medium",
-    "Perplexity AI": "sonar",
-    "OpenRouter": "meta-llama/llama-4-maverick:free",
-    "Generic OpenAI": "gpt-3.5-turbo",
+    "Ollama": "llama3",
+    "Custom OpenAI": "gpt-4o-mini",
+    "Mistral AI": "mistral-large-latest",
+    "Perplexity AI": "sonar-reasoning",
+    "OpenRouter": "meta-llama/llama-3-70b-instruct",
+    "Generic OpenAI": "gpt-4o-mini",
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -150,14 +144,13 @@ PROVIDER_STATUS_INITIALIZING = "initializing"
 ENDPOINT_OPENAI = "https://api.openai.com/v1/chat/completions"
 ENDPOINT_OPENAI_AZURE = "https://{endpoint}/openai/deployments/{deployment-id}/chat/completions?api-version={api_version}"
 ENDPOINT_ANTHROPIC = "https://api.anthropic.com/v1/messages"
-ENDPOINT_GOOGLE = "https://generativelanguage.googleapis.com/v1beta2/models/{model}:generateText?key={api_key}"
+ENDPOINT_GOOGLE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 ENDPOINT_GROQ = "https://api.groq.com/openai/v1/chat/completions"
 ENDPOINT_LOCALAI = "{protocol}://{ip_address}:{port}/v1/chat/completions"
 ENDPOINT_OLLAMA = "{protocol}://{ip_address}:{port}/api/chat"
 ENDPOINT_MISTRAL = "https://api.mistral.ai/v1/chat/completions"
 ENDPOINT_PERPLEXITY = "https://api.perplexity.ai/chat/completions"
 ENDPOINT_OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
-
 
 # ─────────────────────────────────────────────────────────────
 # Sensor Keys

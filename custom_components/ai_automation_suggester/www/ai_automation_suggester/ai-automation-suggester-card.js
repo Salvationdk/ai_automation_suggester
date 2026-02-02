@@ -1,4 +1,19 @@
+// ─────────────────────────────────────────────────────────────
+// MAIN CARD CLASS
+// ─────────────────────────────────────────────────────────────
 class AIAutomationSuggesterCard extends HTMLElement {
+  // Config for the visual editor
+  static getStubConfig() {
+    return { 
+      title: "AI Suggestions", 
+      suggestion_type: "all" 
+    };
+  }
+
+  static getConfigElement() {
+    return document.createElement("ai-automation-suggester-card-editor");
+  }
+
   setConfig(config) {
     this.config = config;
   }
@@ -12,7 +27,7 @@ class AIAutomationSuggesterCard extends HTMLElement {
 
   initCard() {
     // Determine title and filter based on config
-    const typeFilter = this.config.suggestion_type || "all"; // 'all', 'fix', 'new', 'blueprint'
+    const typeFilter = this.config.suggestion_type || "all"; 
     
     let title = "AI Automation Suggestions";
     let icon = "mdi:robot";
@@ -50,7 +65,7 @@ class AIAutomationSuggesterCard extends HTMLElement {
         </div>
         
         <div class="card-actions" style="display: flex; justify-content: space-between; padding: 8px 16px;">
-           <span style="font-size: 0.8em; opacity: 0.6; align-self: center;">Filter: ${typeFilter.toUpperCase()}</span>
+           <span style="font-size: 0.8em; opacity: 0.6; align-self: center;">View: ${typeFilter.toUpperCase()}</span>
            <mwc-button id="generate-btn">
               <ha-icon icon="mdi:creation" style="margin-right: 8px;"></ha-icon> Generate New
             </mwc-button>
@@ -82,9 +97,7 @@ class AIAutomationSuggesterCard extends HTMLElement {
     this.content.innerHTML = '<div class="loading"><ha-icon icon="mdi:brain" class="rotating"></ha-icon> AI is thinking... (This takes 10-20s)</div>';
     try {
         await this._hass.callService("ai_automation_suggester", "generate_suggestions", {});
-        // Wait a bit then refresh
         setTimeout(() => this.fetchSuggestions(), 4000); 
-        // Also poll longer in case it's slow
         setTimeout(() => this.fetchSuggestions(), 12000); 
     } catch (err) {
         this.content.innerHTML = `<div class="error">Generation Failed: ${err.message}</div>`;
@@ -94,10 +107,8 @@ class AIAutomationSuggesterCard extends HTMLElement {
   renderSuggestions(suggestions) {
     const filter = this.config.suggestion_type || "all";
     
-    // Filter the list
     const filtered = suggestions.filter(item => {
         if (filter === "all") return true;
-        // Fix sloppy AI typing (case insensitive)
         const type = (item.type || "").toLowerCase();
         if (filter === "fix") return type.includes("fix") || type.includes("repair");
         if (filter === "blueprint") return type.includes("blueprint");
@@ -121,7 +132,6 @@ class AIAutomationSuggesterCard extends HTMLElement {
       const card = document.createElement('div');
       card.className = 'suggestion-item';
       
-      // Dynamic Colors
       let typeColor = "#2196F3"; 
       let icon = "mdi:lightbulb-on";
       const t = (item.type || "").toLowerCase();
@@ -139,11 +149,9 @@ class AIAutomationSuggesterCard extends HTMLElement {
                 <div class="s-desc">${item.detailedDescription}</div>
              </div>
           </div>
-          
           <div class="code-preview">
             <pre><code>${this.escapeHtml(item.yamlCode)}</code></pre>
           </div>
-
           <div class="suggestion-actions">
             <mwc-button class="btn-decline" data-id="${item.id}">Ignore</mwc-button>
             <mwc-button raised class="btn-accept" data-id="${item.id}" style="--mdc-theme-primary: ${typeColor};">Accept</mwc-button>
@@ -175,13 +183,78 @@ class AIAutomationSuggesterCard extends HTMLElement {
   getCardSize() { return 4; }
 }
 
+// ─────────────────────────────────────────────────────────────
+// VISUAL EDITOR CLASS
+// ─────────────────────────────────────────────────────────────
+class AIAutomationSuggesterCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config;
+    this.render();
+  }
+
+  configChanged(newConfig) {
+    const event = new CustomEvent("config-changed", {
+      detail: { config: newConfig },
+      bubbles: true,
+      composed: true,
+    });
+    this.dispatchEvent(event);
+  }
+
+  render() {
+    this.innerHTML = `
+      <div style="padding: 12px; display: flex; flex-direction: column; gap: 16px;">
+        
+        <ha-textfield
+          label="Title (Optional)"
+          .value="${this._config.title || ''}"
+          configValue="title"
+          style="width: 100%;"
+        ></ha-textfield>
+
+        <ha-select
+          label="Filter Dashboard By Type"
+          .value="${this._config.suggestion_type || 'all'}"
+          configValue="suggestion_type"
+          fixedMenuPosition
+          naturalMenuWidth
+          style="width: 100%;"
+        >
+          <mwc-list-item value="all">All Suggestions (Everything)</mwc-list-item>
+          <mwc-list-item value="fix">🔧 Repair Center (Fixes Only)</mwc-list-item>
+          <mwc-list-item value="blueprint">📐 Blueprints Only</mwc-list-item>
+          <mwc-list-item value="new">💡 New Ideas & Inspiration</mwc-list-item>
+        </ha-select>
+
+        <p style="opacity: 0.6; font-size: 0.85em; margin-top: 0;">
+          Select 'All' to see everything, or pick a specific category to build specialized dashboards.
+        </p>
+      </div>
+    `;
+
+    // Attach Event Listeners manually (Vanilla JS style)
+    const titleInput = this.querySelector("ha-textfield");
+    const typeInput = this.querySelector("ha-select");
+
+    titleInput.addEventListener("input", (e) => {
+      this._config = { ...this._config, title: e.target.value };
+      this.configChanged(this._config);
+    });
+
+    typeInput.addEventListener("selected", (e) => {
+      this._config = { ...this._config, suggestion_type: e.target.value };
+      this.configChanged(this._config);
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// STYLES
+// ─────────────────────────────────────────────────────────────
 const style = document.createElement('style');
 style.textContent = `
   .ai-card { overflow: hidden; }
-  .suggestion-item {
-    border-bottom: 1px solid var(--divider-color);
-    padding: 16px;
-  }
+  .suggestion-item { border-bottom: 1px solid var(--divider-color); padding: 16px; }
   .suggestion-item:last-child { border-bottom: none; }
   .suggestion-top { display: flex; gap: 16px; margin-bottom: 12px; }
   .s-title { font-weight: bold; font-size: 1.1em; margin-bottom: 4px; }
@@ -189,13 +262,9 @@ style.textContent = `
   .code-preview {
     background: var(--primary-background-color);
     border: 1px solid var(--divider-color);
-    padding: 8px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 0.8em;
-    overflow-x: auto;
-    margin-bottom: 12px;
-    max-height: 200px;
+    padding: 8px; border-radius: 4px;
+    font-family: monospace; font-size: 0.8em;
+    overflow-x: auto; margin-bottom: 12px; max-height: 200px;
   }
   .suggestion-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .loading, .error, .no-data { padding: 32px; text-align: center; color: var(--secondary-text-color); }
@@ -204,4 +273,6 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+// Register Both Components
 customElements.define("ai-automation-suggester-card", AIAutomationSuggesterCard);
+customElements.define("ai-automation-suggester-card-editor", AIAutomationSuggesterCardEditor);

@@ -1,6 +1,7 @@
 """Coordinator for AI Automation Suggester.
 
 Changelog:
+- Added support for static dashboard IDs (latest_1, latest_2).
 - Added robust JSON parsing to handle truncated AI responses.
 - Integrated History (ai_suggestions_history.json) and Memory (ai_suggester_memory.json).
 - Implemented handle_save_suggestion to write to ai_automations.yaml and blueprints.
@@ -197,7 +198,23 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
     async def handle_save_suggestion(self, call: ServiceCall):
         """Gemmer forslag til ai_automations.yaml eller blueprints."""
         sug_id = call.data.get("suggestion_id")
-        suggestion = next((s for s in self.data["suggestions_list"] + self.data["history"] if s.get("suggestion_id") == sug_id), None)
+        
+        # Håndter special-ID'er fra dashboardet (latest_1, latest_2 osv.)
+        if isinstance(sug_id, str) and sug_id.startswith("latest_"):
+            try:
+                idx = int(sug_id.split("_")[1]) - 1
+                s_list = self.data.get("suggestions_list", [])
+                if 0 <= idx < len(s_list):
+                    suggestion = s_list[idx]
+                else:
+                    _LOGGER.error("Index %s findes ikke i forslagslisten.", idx + 1)
+                    return
+            except (ValueError, IndexError):
+                _LOGGER.error("Ugyldigt format for latest_ID: %s", sug_id)
+                return
+        else:
+            # Standard søgning via unikt ID
+            suggestion = next((s for s in self.data["suggestions_list"] + self.data["history"] if s.get("suggestion_id") == sug_id), None)
         
         if not suggestion or "yaml" not in suggestion:
             _LOGGER.error("Kunne ikke gemme: Forslag ikke fundet eller mangler YAML.")
@@ -208,7 +225,9 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
 
         try:
             if is_bp:
-                fname = f"ai_gen_{sug_id}.yaml"
+                # Brug forslagets eget ID til filnavnet for at undgå 'latest_1.yaml'
+                real_id = suggestion.get("suggestion_id", hashlib.md5(suggestion['title'].encode()).hexdigest()[:10])
+                fname = f"ai_gen_{real_id}.yaml"
                 path = self.hass.config.path(f"blueprints/automation/{fname}")
                 def write_bp():
                     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -278,16 +297,23 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
     async def _dispatch(self, prompt: str) -> str | None:
         provider = self._opt(CONF_PROVIDER, "Google")
         providers = {
-            "OpenAI": self._openai, "Anthropic": self._anthropic, "Google": self._google,
-            "Groq": self._groq, "LocalAI": self._localai, "Ollama": self._ollama,
-            "Custom OpenAI": self._custom_openai, "Mistral AI": self._mistral,
-            "Perplexity AI": self._perplexity, "OpenRouter": self._openrouter,
-            "OpenAI Azure": self._openai_azure, "Generic OpenAI": self._generic_openai,
+            "OpenAI": self._openai, 
+            "Anthropic": self._anthropic, 
+            "Google": self._google,
+            "Groq": self._groq, 
+            "LocalAI": self._localai, 
+            "Ollama": self._ollama,
+            "Custom OpenAI": self._custom_openai, 
+            "Mistral AI": self._mistral,
+            "Perplexity AI": self._perplexity, 
+            "OpenRouter": self._openrouter,
+            "OpenAI Azure": self._openai_azure, 
+            "Generic OpenAI": self._generic_openai,
         }
         if provider not in providers: return None
         return await providers[provider](prompt)
 
-    # --- AI Providers (Beholdt alle fra GitHub) ---
+    # --- AI Providers ---
 
     async def _openai(self, prompt: str):
         try:
@@ -304,7 +330,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         try:
             api_key = self._opt(CONF_GOOGLE_API_KEY)
             model = self._opt(CONF_GOOGLE_MODEL, "gemini-1.5-flash")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             body = {"contents": [{"parts": [{"text": prompt}]}]}
             async with self.session.post(url, json=body, timeout=90) as resp:
                 res = await resp.json()

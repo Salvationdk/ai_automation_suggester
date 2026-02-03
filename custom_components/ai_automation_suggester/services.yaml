@@ -1,6 +1,6 @@
 ###############################################################################
 # AI Automation Suggester - Services Configuration v2.0
-# Alle originale felter er bevaret og udvidet med v2.0 funktionalitet.
+# Alle originale felter er bevaret og udvidet med temperatur og avancerede filtre.
 ###############################################################################
 
 generate_suggestions:
@@ -14,6 +14,16 @@ generate_suggestions:
       selector:
         text:
           multiline: true
+    temperature:
+      name: Temperature
+      description: Control the AI creativity. 0.1 is best for YAML, 0.7+ is better for brainstorming ideas.
+      default: 0.1
+      selector:
+        number:
+          min: 0.0
+          max: 1.0
+          step: 0.1
+          mode: slider
     entity_limit:
       name: Entity Limit
       description: Maximum number of entities to send to the AI (Default 200).

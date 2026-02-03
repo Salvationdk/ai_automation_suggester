@@ -1,9 +1,10 @@
-"""The AI Automation Suggester integration.
+"""The AI Automation Suggester integration v2.0.
 
 Changelog:
 - Combined original migration and service logic with automatic resource registration.
 - Added automatic creation of ai_automations.yaml.
 - Added static path registration for dashboard card.
+- Implemented temperature handling in generate_suggestions service.
 """
 
 import logging
@@ -33,13 +34,13 @@ from .coordinator import AIAutomationCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# --- NYE KONSTANTER TIL AUTOMATISK SETUP ---
+# --- KONSTANTER TIL AUTOMATISK SETUP ---
 URL_BASE = "/ai_suggester_static"
 CARD_FILENAME = "ai-automation-suggester-card.js"
 CARD_PATH = f"{URL_BASE}/{CARD_FILENAME}"
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate old entry (BEHOLDT FRA ORIGINAL)."""
+    """Migrate old entry."""
     _LOGGER.info("Migrating from version %s", config_entry.version)
     if config_entry.version < CONFIG_VERSION:
         new_data = {**config_entry.data}
@@ -54,17 +55,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the AI Automation Suggester component."""
     hass.data.setdefault(DOMAIN, {})
 
-    # 1. Registrer statisk sti til JS-kortet (NY AUTOMATISK FUNKTION)
+    # 1. Registrer statisk sti til JS-kortet (Automatisk servering)
     static_dir = Path(__file__).parent / "www" / "ai_automation_suggester"
     if static_dir.exists():
         hass.http.register_static_path(URL_BASE, str(static_dir), cache_headers=False)
 
-    # Register API views (BEHOLDT FRA ORIGINAL)
+    # Register API views for the frontend
     hass.http.register_view(AIAutomationSuggestionsView)
     hass.http.register_view(AIAutomationActionView)
 
     async def handle_generate_suggestions(call: ServiceCall) -> None:
-        """Service handler (BEHOLDT FRA ORIGINAL MED ALLE PARAMETRE)."""
+        """Service handler med fuld support for v2.0 parametre."""
         provider_config = call.data.get(ATTR_PROVIDER_CONFIG)
         custom_prompt = call.data.get(ATTR_CUSTOM_PROMPT)
         all_entities = call.data.get("all_entities", False)
@@ -72,6 +73,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         entity_limit = call.data.get("entity_limit", 200)
         automation_read_yaml = call.data.get("automation_read_yaml", False)
         automation_limit = call.data.get("automation_limit", 100)
+        temp = call.data.get("temperature", 0.1)
 
         if isinstance(domains, str):
             domains = [d.strip() for d in domains.split(',') if d.strip()]
@@ -91,25 +93,27 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if coordinator is None:
                 raise ServiceValidationError("No AI Automation Suggester provider configured")
 
+            # Gem original prompt for at kunne nulstille efter kørsel
+            original_prompt = coordinator.SYSTEM_PROMPT
             if custom_prompt:
-                original_prompt = coordinator.SYSTEM_PROMPT
                 coordinator.SYSTEM_PROMPT = f"{coordinator.SYSTEM_PROMPT}\n\nAdditional User Context:\n{custom_prompt}"
-            else:
-                original_prompt = None
 
+            # Sæt parametre for denne kørsel
             coordinator.scan_all = all_entities
             coordinator.selected_domains = domains
             coordinator.entity_limit = entity_limit
             coordinator.automation_read_file = automation_read_yaml
             coordinator.automation_limit = automation_limit
+            coordinator.current_temperature = float(temp)
 
             try:
                 await coordinator.async_request_refresh()
             finally:
-                if original_prompt is not None:
-                    coordinator.SYSTEM_PROMPT = original_prompt
+                # Nulstil parametre til standard efter kørsel
+                coordinator.SYSTEM_PROMPT = original_prompt
                 coordinator.scan_all = False
                 coordinator.selected_domains = []
+                coordinator.current_temperature = 0.1
 
         except Exception as err:
             raise ServiceValidationError(f"Failed to generate suggestions: {err}")
@@ -119,7 +123,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up entry from config UI."""
-    # 2. AUTOMATISK FIL-TJEK OG RESSOURCER (NY FUNKTION)
+    # 2. AUTOMATISK FIL-TJEK OG LOVELACE RESSOURCER
     await async_ensure_files(hass)
     await async_register_resource(hass)
 
@@ -131,7 +135,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_added_to_hass()
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
-        # Nye services
+        # Registrer v2.0 services
         async def handle_save_suggestion(call: ServiceCall):
             await coordinator.handle_save_suggestion(call)
 
@@ -161,23 +165,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady from err
 
 async def async_ensure_files(hass: HomeAssistant):
-    """Sikrer at ai_automations.yaml eksisterer (NY)."""
+    """Sikrer at ai_automations.yaml eksisterer i /config/ mappen."""
     path = hass.config.path("ai_automations.yaml")
     if not os.path.exists(path):
         def create_file():
             with open(path, 'w', encoding='utf-8') as f:
-                f.write("# AI Generated Automations\n")
+                f.write("# AI Generated Automations - DO NOT DELETE\n")
         await hass.async_add_executor_job(create_file)
+        _LOGGER.info("Created ai_automations.yaml automatically.")
 
 async def async_register_resource(hass: HomeAssistant):
-    """Registrerer JS kortet automatisk i Lovelace (NY)."""
+    """Registrerer automatisk dashboard-kortet i Lovelace ressourcer."""
     resources = hass.data.get("lovelace", {}).get("resources")
     if resources:
+        # Tjek om kortet allerede er registreret
         if not any(CARD_PATH in r.get("url", "") for r in resources.async_items()):
-            await resources.async_create_item({"res_type": "module", "url": CARD_PATH})
+            _LOGGER.info("Registering AI Suggester Card as Lovelace resource.")
+            await resources.async_create_item({
+                "res_type": "module",
+                "url": CARD_PATH
+            })
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload entry (BEHOLDT FRA ORIGINAL)."""
+    """Unload entry."""
     try:
         unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         if unload_ok:
@@ -187,7 +197,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await coordinator.async_shutdown()
         return unload_ok
     except Exception as err:
-        _LOGGER.error("Error unloading: %s", err)
+        _LOGGER.error("Error unloading AI Suggester: %s", err)
         return False
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -196,11 +206,11 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_setup_entry(hass, entry)
 
 # ─────────────────────────────────────────────────────────────
-# API Views classes (ALT BEHOLDT FRA ORIGINAL)
+# API Views (Interfaces til Frontend kortet)
 # ─────────────────────────────────────────────────────────────
 
 class AIAutomationSuggestionsView(HomeAssistantView):
-    """API View to provide suggestions to the frontend."""
+    """API View der leverer data til det visuelle JS-kort."""
     url = "/api/ai_automation_suggester/suggestions"
     name = "api:ai_automation_suggester:suggestions"
     requires_auth = True
@@ -236,23 +246,23 @@ class AIAutomationSuggestionsView(HomeAssistantView):
         return self.json(all_suggestions)
 
 class AIAutomationActionView(HomeAssistantView):
-    """API View to handle actions from the frontend."""
+    """API View der håndterer 'Accept/Decline' fra det visuelle JS-kort."""
     url = "/api/ai_automation_suggester/{action}/{suggestion_id}"
     name = "api:ai_automation_suggester:action"
     requires_auth = True
 
     async def post(self, request, action, suggestion_id):
         hass = request.app["hass"]
-        _LOGGER.info(f"UI Action received: {action} on suggestion {suggestion_id}")
 
         if action == "accept":
             for entry_id, coordinator in hass.data[DOMAIN].items():
                 if isinstance(coordinator, AIAutomationCoordinator):
-                    # Vi sender det som en dict da vores nye handle_save_suggestion i coordinator kan håndtere det
+                    # Kalder koordinatorens gem-funktion (understøtter dict input)
                     await coordinator.handle_save_suggestion({"suggestion_id": suggestion_id})
             return self.json({"success": True})
         
         elif action == "decline":
-            return self.json({"success": True, "message": "Feedback noted"})
+            # Her kunne man tilføje 'Memory' logik i fremtiden
+            return self.json({"success": True, "message": "Suggestion ignored."})
 
         return self.json({"success": False, "error": "Invalid action"}, status_code=400)

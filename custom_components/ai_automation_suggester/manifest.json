@@ -1,7 +1,7 @@
 {
   "domain": "ai_automation_suggester",
   "name": "AI Automation Suggester",
-  "version": "2.0.0",
+  "version": "v2.0-test",
   "documentation": "https://github.com/Salvationdk/ai_automation_suggester",
   "issue_tracker": "https://github.com/Salvationdk/ai_automation_suggester/issues",
   "dependencies": [

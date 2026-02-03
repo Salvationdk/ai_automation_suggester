@@ -1,134 +1,79 @@
 ###############################################################################
-# AI Automation Suggester - Advanced Dashboard v2.0
+# AI Automation Suggester - Universal Dashboard v2.2
 # 
-# Dette dashboard kræver:
-# - Mushroom Cards (valgfrit, for chips)
-# - At ai_automations.yaml er inkluderet i din configuration.yaml
+# Dette dashboard finder selv din AI-udbyder (Google, OpenAI, Ollama osv.)
+# så længe integrationen er installeret korrekt.
 ###############################################################################
 
 type: vertical-stack
 cards:
-  # --- 1. STATUS CHIPS ---
-  - type: custom:mushroom-chips-card
-    alignment: start
-    chips:
-      - type: template
-        entity: sensor.ai_automation_suggestions_google
-        icon: mdi:robot-confused-outline
-        icon_color: >
-          {% if is_state('sensor.ai_automation_suggestions_google', 'New Suggestions Available') %}
-            yellow
-          {% else %}
-            green
-          {% endif %}
-        content: "Forslag: {{ states('sensor.ai_automation_suggestions_google') }}"
-      - type: template
-        entity: sensor.ai_model_in_use_google
-        icon: mdi:brain
-        content: "{{ states('sensor.ai_model_in_use_google') }}"
+  # --- 1. DET INTERAKTIVE AI KORT ---
+  # Dette kort bruger vi til at se, acceptere eller afvise forslag.
+  # Klik på "Rediger" i UI for at vælge din specifikke udbyder i dropdown-menuen.
+  - type: custom:ai-automation-suggester-card
+    title: "AI Automation Hub"
 
-  # --- 2. AKTIVE FORSLAG ---
+  # --- 2. DYNAMISK STATUS & INFORMATION ---
   - type: markdown
     content: >
-      {% set suggestions = state_attr('sensor.ai_automation_suggestions_google', 'suggestions_list') %}
-      # 🤖 Aktive AI Forslag
+      {% set suggestions_sensor = states.sensor 
+        | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_suggestions$') 
+        | map(attribute='entity_id') | first | default('none') %}
       
-      {% if suggestions and suggestions is iterable and suggestions | length > 0 %}
-        {% for item in suggestions %}
-        ### {{ loop.index }}. {{ item.title }}
-        **Type:** `{{ item.type | upper }}`
+      {% if suggestions_sensor != 'none' %}
+        {% set provider = state_attr(suggestions_sensor, 'provider') %}
+        # 🤖 AI Status: {{ provider }}
+        **Antal forslag:** {{ states(suggestions_sensor) }}
+        **Scannede enheder:** {{ state_attr(suggestions_sensor, 'entities_processed_count') }}
         
-        {{ item.description }}
-        
-        <details>
-        <summary>🔍 Se YAML kode</summary>
-        
-        ```yaml
-        {{ item.yaml }}
-        ```
-        </details>
         ---
-        {% endfor %}
+        ### 💡 Seneste Forslag
+        {% set suggestions = state_attr(suggestions_sensor, 'suggestions_list') %}
+        {% if suggestions %}
+          **{{ suggestions[0].title }}**
+          {{ suggestions[0].description }}
+        {% else %}
+          _Ingen aktive forslag lige nu._
+        {% endif %}
       {% else %}
-        _Ingen nye forslag tilgængelige. Tryk på knappen herunder for at starte en analyse._
+        # ⚠️ Ingen AI fundet
+        Vær sikker på at du har konfigureret en AI-udbyder i integrationen.
       {% endif %}
 
-  # --- 3. HANDLINGER (GEM FORSLAG) ---
-  # Da standard knapper ikke kan læse ID'er dynamisk, bruger vi en entities liste her
+  # --- 3. SYSTEM KONTROL (Universel) ---
   - type: entities
-    title: "Gem forslag til fil"
+    title: "AI Kontrolpanel"
     show_header_toggle: false
     entities:
-      - type: section
-        label: "Vælg et forslag for at gemme det"
-      # Vi viser de 3 nyeste forslag som knapper
-      - entity: sensor.ai_automation_suggestions_google
-        name: "Gem Forslag #1"
-        icon: mdi:content-save-move
-        tap_action:
-          action: call-service
-          service: ai_automation_suggester.save_suggestion
-          service_data:
-            # Vi bruger en fast ID-reference eller lader koordinatoren tage den nyeste
-            suggestion_id: "latest_1" 
-      - entity: sensor.ai_automation_suggestions_google
-        name: "Gem Forslag #2"
-        icon: mdi:content-save-move
-        tap_action:
-          action: call-service
-          service: ai_automation_suggester.save_suggestion
-          service_data:
-            suggestion_id: "latest_2"
+      # Her lister vi alle fundne AI-status sensorer automatisk
+      - type: custom:auto-entities
+        card:
+          type: section
+          label: "Forbindelses Status"
+        filter:
+          include:
+            - entity_id: "sensor.ai_suggester_*_status"
+        show_empty: false
 
-  # --- 4. SYSTEM KONTROL ---
-  - type: entities
-    title: System Kontrol
-    show_header_toggle: false
-    entities:
-      - entity: sensor.ai_last_error_message_google
-        name: Seneste Fejl
-      - type: attribute
-        entity: sensor.ai_automation_suggestions_google
-        attribute: entities_processed_count
-        name: Enheder Analyseret
-        icon: mdi:chart-bubble
     footer:
       type: buttons
       entities:
-        - action_name: Start Ny Analyse
+        - action_name: "Start Analyse"
           service: ai_automation_suggester.generate_suggestions
           icon: mdi:refresh
+          # Vi lader service_data være tom, så tager den 'default' AI
+          service_data: {}
+        - action_name: "Ryd Historik"
+          service: ai_automation_suggester.clear_suggestion_history
+          icon: mdi:delete-sweep
 
-  # --- 5. HISTORIK ---
-  - type: markdown
-    content: >
-      # 📚 Forslagshistorik (Sidste 5)
-      {% set history = state_attr('sensor.ai_automation_suggestions_google', 'history') %}
-      
-      {% if history and history is iterable and history | length > 0 %}
-        {% for item in history[:5] %}
-        ### 🕒 {{ item.timestamp[:10] }} - {{ item.title }}
-        {{ item.description }}
-        
-        <details>
-        <summary>🔍 Se gammel kode</summary>
-        
-        ```yaml
-        {{ item.yaml }}
-        ```
-        </details>
-        ---
-        {% endfor %}
-      {% else %}
-        _Historikken er tom._
-      {% endif %}
-
-  # --- 6. VEDLIGEHOLDELSE ---
-  - type: button
-    name: Ryd Al AI Historik
-    icon: mdi:delete-sweep
-    tap_action:
-      action: call-service
-      service: ai_automation_suggester.clear_suggestion_history
-      confirmation:
-        text: Er du sikker på, at du vil slette hele historikken?
+  # --- 4. AVANCERET DIAGNOSTIK (Auto-list) ---
+  - type: custom:auto-entities
+    card:
+      type: entities
+      title: "AI Diagnostik"
+    filter:
+      include:
+        - entity_id: "sensor.ai_suggester_*_model"
+        - entity_id: "sensor.ai_suggester_*_last_error"
+        - entity_id: "sensor.ai_suggester_*_input_tokens"

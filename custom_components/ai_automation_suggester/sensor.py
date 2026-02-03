@@ -1,6 +1,7 @@
 """Sensor platform for AI Automation Suggester v2.0.
 
 Changelog:
+- Multi-Provider Support: Explicitly sets unique entity IDs per provider instance.
 - Retained multi-sensor architecture (Tokens, Model, Status, Errors).
 - Integrated history and entities_processed_count from v2.0 Coordinator.
 - Maintained DeviceInfo for clean HA UI integration.
@@ -83,12 +84,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async_add_entities(entities, True)
 
 class AIBaseSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
-    """Base klasse for alle AI sensorer."""
+    """Base klasse for alle AI sensorer med Multi-Provider logik."""
     def __init__(self, coordinator, entry, description) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._entry = entry
+        
+        # Unikt ID til HA's interne database
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        
+        # --- MULTI-PROVIDER LOGIK: Tvinger unikt entity_id ---
+        # Resultat: sensor.ai_suggester_google_suggestions
+        provider_slug = entry.data.get(CONF_PROVIDER, "ai").lower().replace(" ", "_")
+        self.entity_id = f"sensor.ai_suggester_{provider_slug}_{description.key}"
+        
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=f"{INTEGRATION_NAME} ({entry.data.get(CONF_PROVIDER, 'Unknown')})",
@@ -111,13 +120,11 @@ class AISuggestionsSensor(AIBaseSensor):
         s_list = data.get("suggestions_list", [])
         history = data.get("history", [])
         
-        # Sæt statustekst
         if s_list:
             self._attr_native_value = f"{len(s_list)} New Suggestions"
         else:
             self._attr_native_value = "No New Suggestions"
 
-        # Eksponer forslag og historik som attributter
         first_sug = s_list[0] if s_list else {}
         self._attr_extra_state_attributes = {
             "suggestions_list": s_list,
@@ -131,12 +138,9 @@ class AISuggestionsSensor(AIBaseSensor):
         }
 
 class AIProviderStatusSensor(AIBaseSensor):
-    """Viser om udbyderen er forbundet eller har fejl."""
     def _update_state_and_attributes(self) -> None:
         data = self.coordinator.data or {}
-        if not self.coordinator.last_update_success: 
-            self._attr_native_value = PROVIDER_STATUS_ERROR
-        elif data.get("last_error"): 
+        if not self.coordinator.last_update_success or data.get("last_error"): 
             self._attr_native_value = PROVIDER_STATUS_ERROR
         else: 
             self._attr_native_value = PROVIDER_STATUS_CONNECTED
@@ -147,7 +151,6 @@ class AIProviderStatusSensor(AIBaseSensor):
         }
 
 class MaxInputTokensSensor(AIBaseSensor):
-    """Viser den konfigurerede grænse for input tokens."""
     def _update_state_and_attributes(self) -> None:
         self._attr_native_value = self._entry.options.get(
             CONF_MAX_INPUT_TOKENS, 
@@ -155,7 +158,6 @@ class MaxInputTokensSensor(AIBaseSensor):
         )
 
 class MaxOutputTokensSensor(AIBaseSensor):
-    """Viser den konfigurerede grænse for output tokens."""
     def _update_state_and_attributes(self) -> None:
         self._attr_native_value = self._entry.options.get(
             CONF_MAX_OUTPUT_TOKENS, 
@@ -163,7 +165,6 @@ class MaxOutputTokensSensor(AIBaseSensor):
         )
 
 class AIModelSensor(AIBaseSensor):
-    """Viser hvilken model der aktuelt bruges."""
     def _update_state_and_attributes(self) -> None:
         provider = self._entry.data.get(CONF_PROVIDER)
         model_key = PROVIDER_TO_MODEL_KEY_MAP.get(provider)
@@ -173,7 +174,6 @@ class AIModelSensor(AIBaseSensor):
         )
 
 class AILastErrorSensor(AIBaseSensor):
-    """Viser den seneste fejlbesked fra AI'en."""
     def _update_state_and_attributes(self) -> None:
         data = self.coordinator.data or {}
         err = data.get("last_error")

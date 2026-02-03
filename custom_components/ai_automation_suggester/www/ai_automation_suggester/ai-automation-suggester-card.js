@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// MAIN CARD CLASS v2.0 (Multi-Provider Aware)
+// MAIN CARD CLASS v2.2 (Multi-Provider with Auto-Discovery)
 // ─────────────────────────────────────────────────────────────
 class AIAutomationSuggesterCard extends HTMLElement {
   static getStubConfig() {
@@ -86,15 +86,13 @@ class AIAutomationSuggesterCard extends HTMLElement {
       const suggestions = await this._hass.callApi("GET", "ai_automation_suggester/suggestions");
       this.renderSuggestions(suggestions);
     } catch (err) {
-      console.error(err);
       this.content.innerHTML = `<div class="error">Connection Error: ${err.message}</div>`;
     }
   }
 
   async triggerGeneration() {
-    this.content.innerHTML = '<div class="loading"><ha-icon icon="mdi:brain" class="rotating"></ha-icon> AI is thinking... (This takes 10-20s)</div>';
+    this.content.innerHTML = '<div class="loading"><ha-icon icon="mdi:brain" class="rotating"></ha-icon> AI is thinking...</div>';
     
-    // Brug provider_config fra konfigurationen hvis den findes
     const serviceData = {};
     if (this.config.provider_config) {
         serviceData.provider_config = this.config.provider_config;
@@ -122,12 +120,7 @@ class AIAutomationSuggesterCard extends HTMLElement {
     });
 
     if (!filtered || filtered.length === 0) {
-      this.content.innerHTML = `
-        <div class="no-data">
-          <ha-icon icon="mdi:check-circle-outline" style="font-size: 3em; opacity: 0.3;"></ha-icon><br>
-          No suggestions found.<br>
-          <small>Try generating new ideas with your AI provider.</small>
-        </div>`;
+      this.content.innerHTML = `<div class="no-data">No suggestions found.</div>`;
       return;
     }
 
@@ -178,9 +171,7 @@ class AIAutomationSuggesterCard extends HTMLElement {
     try {
         await this._hass.callApi("POST", `ai_automation_suggester/${action}/${id}`);
         this.fetchSuggestions(); 
-    } catch (err) {
-        alert(`Error: ${err.message}`);
-    }
+    } catch (err) { alert(`Error: ${err.message}`); }
   }
 
   escapeHtml(text) {
@@ -192,12 +183,30 @@ class AIAutomationSuggesterCard extends HTMLElement {
 }
 
 // ─────────────────────────────────────────────────────────────
-// VISUAL EDITOR CLASS
+// VISUAL EDITOR CLASS (Nu med automatisk Provider-hentning)
 // ─────────────────────────────────────────────────────────────
 class AIAutomationSuggesterCardEditor extends HTMLElement {
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._providers) {
+      this._fetchProviders();
+    }
+  }
+
   setConfig(config) {
     this._config = config;
     this.render();
+  }
+
+  async _fetchProviders() {
+    try {
+      // Henter listen over installerede AI'er fra vores nye API view
+      const providers = await this._hass.callApi("GET", "ai_automation_suggester/providers");
+      this._providers = providers;
+      this.render();
+    } catch (e) {
+      console.error("Kunne ikke hente AI-udbydere", e);
+    }
   }
 
   configChanged(newConfig) {
@@ -210,6 +219,15 @@ class AIAutomationSuggesterCardEditor extends HTMLElement {
   }
 
   render() {
+    if (!this._hass) return;
+
+    // Generer rullemenu-mulighederne dynamisk
+    const providerOptions = (this._providers || []).map(p => 
+      `<mwc-list-item value="${p.entry_id}" ${this._config.provider_config === p.entry_id ? 'selected' : ''}>
+        ${p.name}
+      </mwc-list-item>`
+    ).join("");
+
     this.innerHTML = `
       <div style="padding: 12px; display: flex; flex-direction: column; gap: 16px;">
         <ha-textfield
@@ -224,7 +242,6 @@ class AIAutomationSuggesterCardEditor extends HTMLElement {
           .value="${this._config.suggestion_type || 'all'}"
           configValue="suggestion_type"
           fixedMenuPosition
-          naturalMenuWidth
           style="width: 100%;"
         >
           <mwc-list-item value="all">All Suggestions</mwc-list-item>
@@ -233,69 +250,50 @@ class AIAutomationSuggesterCardEditor extends HTMLElement {
           <mwc-list-item value="new">💡 New Ideas</mwc-list-item>
         </ha-select>
 
-        <ha-textfield
-          label="Target Provider Entry ID (Optional)"
+        <ha-select
+          label="Vælg AI Udbyder til dette kort"
           .value="${this._config.provider_config || ''}"
           configValue="provider_config"
+          fixedMenuPosition
           style="width: 100%;"
-        ></ha-textfield>
+        >
+          <mwc-list-item value="">Brug Standard AI</mwc-list-item>
+          ${providerOptions}
+        </ha-select>
         <p style="opacity: 0.6; font-size: 0.85em; margin-top: -10px;">
-          Leave empty to use the default AI provider for new generations.
+          Når du trykker 'Generate New', vil den valgte AI blive aktiveret.
         </p>
       </div>
     `;
 
-    const titleInput = this.querySelector("ha-textfield[configValue='title']");
-    const typeInput = this.querySelector("ha-select");
-    const providerInput = this.querySelector("ha-textfield[configValue='provider_config']");
-
-    titleInput.addEventListener("input", (e) => {
+    // Event Listeners for inputs
+    this.querySelector("ha-textfield").addEventListener("input", (e) => {
       this.configChanged({ ...this._config, title: e.target.value });
     });
 
-    typeInput.addEventListener("selected", (e) => {
-      this.configChanged({ ...this._config, suggestion_type: e.target.value });
-    });
-
-    providerInput.addEventListener("input", (e) => {
-        this.configChanged({ ...this._config, provider_config: e.target.value });
+    this.querySelectorAll("ha-select").forEach(select => {
+      select.addEventListener("selected", (e) => {
+        const key = e.target.getAttribute("configValue");
+        this.configChanged({ ...this._config, [key]: e.target.value });
+      });
     });
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// STYLES
-// ─────────────────────────────────────────────────────────────
+// STYLES & REGISTRATION (Uændret)
 if (!document.querySelector('#ai-suggester-styles')) {
     const style = document.createElement('style');
     style.id = 'ai-suggester-styles';
     style.textContent = `
-      .ai-card { overflow: hidden; }
+      .ai-card { overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
       .suggestion-item { border-bottom: 1px solid var(--divider-color); padding: 16px; position: relative; }
       .suggestion-item:last-child { border-bottom: none; }
       .suggestion-top { display: flex; gap: 16px; margin-bottom: 12px; }
       .s-title { font-weight: bold; font-size: 1.1em; margin-bottom: 4px; padding-right: 10px; }
-      .s-desc { font-size: 0.9em; opacity: 0.8; line-height: 1.4; }
-      .provider-badge { 
-        font-size: 0.65rem; 
-        background: var(--secondary-background-color); 
-        color: var(--secondary-text-color); 
-        padding: 2px 6px; 
-        border-radius: 4px; 
-        border: 1px solid var(--divider-color);
-        text-transform: uppercase;
-        font-weight: bold;
-        white-space: nowrap;
-      }
-      .code-preview {
-        background: var(--primary-background-color);
-        border: 1px solid var(--divider-color);
-        padding: 8px; border-radius: 4px;
-        font-family: monospace; font-size: 0.8em;
-        overflow-x: auto; margin-bottom: 12px; max-height: 200px;
-      }
+      .provider-badge { font-size: 0.65rem; background: var(--secondary-background-color); color: var(--secondary-text-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--divider-color); text-transform: uppercase; font-weight: bold; }
+      .code-preview { background: var(--primary-background-color); border: 1px solid var(--divider-color); padding: 8px; border-radius: 4px; font-family: monospace; font-size: 0.8em; overflow-x: auto; margin-bottom: 12px; max-height: 200px; }
       .suggestion-actions { display: flex; justify-content: flex-end; gap: 8px; }
-      .loading, .error, .no-data { padding: 32px; text-align: center; color: var(--secondary-text-color); }
+      .loading { padding: 32px; text-align: center; }
       .rotating { animation: rotation 2s infinite linear; display: inline-block; }
       @keyframes rotation { from { transform: rotate(0deg); } to { transform: rotate(359deg); } }
     `;

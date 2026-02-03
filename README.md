@@ -1,10 +1,12 @@
-AI Automation Suggester for Home Assistant
-
+🤖 AI Automation Suggester for Home Assistant
 An intelligent integration that analyzes your Home Assistant entities and existing automations to suggest improvements, new automations, and fixes using advanced AI models (OpenAI, Gemini, Claude, LocalAI, etc.).
 
 ✨ New in Version 2.0
-
 This integration has been upgraded with "Next Gen" features:
+
+💾 Direct Save: Save suggested automations with a single click directly to your ai_automations.yaml or as a Blueprint file.
+
+📚 Proposal History: Never lose a good idea. The last 100 suggestions are stored in ai_suggestions_history.json.
 
 🧠 Memory: If you decline a suggestion, the AI remembers it and won't suggest similar things again.
 
@@ -16,37 +18,40 @@ This integration has been upgraded with "Next Gen" features:
 
 🎨 Visual Editor: Easily configure dashboards using the visual UI - no YAML needed!
 
-🚀 JSON Architecture: Faster and more structured responses.
+🚀 JSON Architecture: Faster, more structured responses with a built-in "JSON Healer" to fix truncated AI code.
 
-🔧 Installation
-
-Install via HACS:
-
+🔧 Installation & Crucial Setup
+1. Install via HACS
 Go to HACS -> Integrations -> 3 dots (top right) -> Custom repositories.
 
 Add this repository URL.
 
 Install "AI Automation Suggester".
 
-Or manually: Copy the custom_components/ai_automation_suggester folder to your HA custom_components directory.
+Restart Home Assistant.
+
+2. Enable the "Save" Feature (Required for v2.0)
+To use the one-click "Save" functionality, you must allow Home Assistant to read the AI-generated automation file.
+
+Open your configuration.yaml and add:
+
+YAML
+automation:
+  - !include automations.yaml
+  - !include ai_automations.yaml # <--- Add this line
+Create an empty file named ai_automations.yaml in your /config/ directory.
 
 Restart Home Assistant.
 
-Go to Settings -> Devices & Services -> Add Integration.
-
-Search for AI Automation Suggester and configure your AI provider (OpenAI, Gemini, Azure, etc.).
-
 📊 Dashboard Card
-
 The integration comes with a custom card that supports a Visual Editor.
 
 How to add the card
-
 Go to your Dashboard -> Edit Dashboard.
 
 Click Add Card.
 
-Search for AI Automation Suggester (It might appear at the bottom of the list).
+Search for AI Automation Suggester.
 
 Use the Visual Editor to configure:
 
@@ -63,9 +68,7 @@ Blueprints: Only shows reusable blueprints (Purple theme).
 New Ideas: Only shows creative automation ideas (Blue theme).
 
 Manual YAML Configuration (Optional)
-
-If you prefer YAML or want to copy-paste configurations:
-
+YAML
 # Standard View
 type: custom:ai-automation-suggester-card
 title: AI Suggestions
@@ -75,65 +78,44 @@ suggestion_type: all
 type: custom:ai-automation-suggester-card
 title: Repair Center
 suggestion_type: fix
-
-# The "Architect" (Blueprints only)
-type: custom:ai-automation-suggester-card
-title: New Blueprints
-suggestion_type: blueprint
-
+Note: For the full v2.0 experience (including the History Log and Save buttons), we recommend using our Advanced Dashboard Template.
 
 🧠 Features
-
 Memory & Learning
+When you click "Ignore" (Decline) on a suggestion in the dashboard, the integration remembers this preference. It logs the rejected idea to ai_suggester_memory.json. In future scans, this list of "dislikes" is sent to the AI to prevent it from suggesting the same things again.
 
-When you click "Ignore" (Decline) on a suggestion in the dashboard, the integration remembers this preference.
-
-It logs the rejected idea to a local file (ai_suggester_memory.json).
-
-In future scans, this list of "dislikes" is sent to the AI to prevent it from suggesting the same things again.
+History Log 📚
+The integration now maintains a permanent log of the latest 100 suggestions in ai_suggestions_history.json. This allows you to browse and restore ideas even after a new analysis has been run.
 
 Self-Healing 🚑
-
-The coordinator automatically scans for entities with state unavailable or unknown.
-
-It prioritizes these entities in the prompt sent to the AI.
-
-It explicitly asks for "Fixes" or debugging steps.
-
-These suggestions appear with a Red Icon and can be filtered using the "Repair Center" dashboard view.
+The coordinator automatically scans for entities with state unavailable or unknown. It prioritizes these entities and explicitly asks the AI for "Fixes" or debugging steps. These suggestions appear with a Red Icon.
 
 Blueprints 📐
-
-Instead of just generating hard-coded automations, the AI can now detect when a logic pattern is reusable (e.g., "Motion-activated light with dimming"). In these cases, it will generate a Blueprint YAML, allowing you to easily apply the same logic to multiple rooms.
+The AI can detect when a logic pattern is reusable (e.g., "Motion-activated light with dimming"). In these cases, it will generate a Blueprint YAML, and the "Save" service will automatically place it in your /blueprints/automation/ folder.
 
 🛠 Services
+ai_automation_suggester.generate_suggestions: Trigger a manual scan.
 
-You can trigger a new scan manually via Developer Tools or automations:
-
-Service: ai_automation_suggester.generate_suggestions
-
-Parameters:
-
-Custom Prompt: Add specific instructions (e.g., "Focus on energy saving in the kitchen" or "Make the living room lights warmer at night").
+Custom Prompt: Add specific instructions (e.g., "Focus on energy saving").
 
 Entity Limit: How many entities to send to the AI (Default: 200).
 
-Scan All Entities: Force a full re-scan of all entities, instead of just the recently changed ones.
+Scan All Entities: Force a full re-scan.
+
+ai_automation_suggester.save_suggestion: Saves a specific suggestion (requires suggestion_id).
+
+ai_automation_suggester.clear_suggestion_history: Wipes the history log for a clean slate.
 
 🤝 Supported Providers
+Google Gemini (Flash 2.0, Pro)
 
 OpenAI (GPT-4o, GPT-3.5)
 
-Google Gemini (Flash 2.0, Pro)
-
 Anthropic (Claude 3.5 Sonnet / 3.7)
 
-LocalAI & Ollama (For local privacy-focused control)
+LocalAI & Ollama (For local privacy)
 
-Azure OpenAI
-
-Groq, Mistral, Perplexity, OpenRouter
+Azure OpenAI, Groq, Mistral, Perplexity, OpenRouter
 
 ❤️ Contributing
-
 Issues and Pull Requests are welcome!

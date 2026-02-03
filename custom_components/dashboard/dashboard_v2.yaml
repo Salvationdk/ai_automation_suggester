@@ -1,79 +1,126 @@
 ###############################################################################
-# AI Automation Suggester - Universal Dashboard v2.2
+# AI Automation Suggester - Ultra-Automatic Dashboard v2.2
 # 
-# Dette dashboard finder selv din AI-udbyder (Google, OpenAI, Ollama osv.)
-# så længe integrationen er installeret korrekt.
+# FUNKTIONER:
+# - Finder selv alle aktive AI-instanser (Google, OpenAI, Ollama, etc.)
+# - Viser aktive forslag for hver udbyder med YAML-fold-ud.
+# - Viser historik for hver udbyder.
+# - Inkluderer det interaktive JS-kort til hurtige handlinger.
 ###############################################################################
 
 type: vertical-stack
 cards:
-  # --- 1. DET INTERAKTIVE AI KORT ---
-  # Dette kort bruger vi til at se, acceptere eller afvise forslag.
-  # Klik på "Rediger" i UI for at vælge din specifikke udbyder i dropdown-menuen.
+  # --- 1. HOVED HUB (JS-KORTET) ---
+  # Dette kort samler automatisk ALLE forslag fra ALLE udbydere i én liste.
   - type: custom:ai-automation-suggester-card
-    title: "AI Automation Hub"
+    title: "AI Interactive Hub"
 
-  # --- 2. DYNAMISK STATUS & INFORMATION ---
+  # --- 2. DYNAMISK STATUS OVERBLIK ---
+  - type: custom:mushroom-chips-card
+    alignment: center
+    chips:
+      - type: template
+        # Denne loop finder alle status-sensorer og viser dem som chips
+        content: >
+          {% set providers = states.sensor 
+            | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_status$') 
+            | list %}
+          {% for p in providers %}
+            {{ state_attr(p.entity_id, 'friendly_name').split('(')[1].split(')')[0] }}: {{ p.state }}{% if not loop.last %} | {% endif %}
+          {% endfor %}
+        icon: mdi:robot-check
+
+  # --- 3. AKTIVE FORSLAG (Loop gennem alle udbydere) ---
   - type: markdown
     content: >
-      {% set suggestions_sensor = states.sensor 
+      {% set suggestion_sensors = states.sensor 
         | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_suggestions$') 
-        | map(attribute='entity_id') | first | default('none') %}
+        | list %}
       
-      {% if suggestions_sensor != 'none' %}
-        {% set provider = state_attr(suggestions_sensor, 'provider') %}
-        # 🤖 AI Status: {{ provider }}
-        **Antal forslag:** {{ states(suggestions_sensor) }}
-        **Scannede enheder:** {{ state_attr(suggestions_sensor, 'entities_processed_count') }}
+      # 🤖 Aktive AI Forslag
+      
+      {% for sensor in suggestion_sensors %}
+        {% set provider = state_attr(sensor.entity_id, 'provider') %}
+        {% set suggestions = state_attr(sensor.entity_id, 'suggestions_list') %}
         
-        ---
-        ### 💡 Seneste Forslag
-        {% set suggestions = state_attr(suggestions_sensor, 'suggestions_list') %}
-        {% if suggestions %}
-          **{{ suggestions[0].title }}**
-          {{ suggestions[0].description }}
+        ## 🧠 Udbyder: {{ provider }}
+        {% if suggestions and suggestions | length > 0 %}
+          {% for item in suggestions %}
+          ### {{ loop.index }}. {{ item.title }}
+          **Type:** `{{ item.type | upper }}`
+          
+          {{ item.description }}
+          
+          <details>
+          <summary>🔍 Se YAML kode</summary>
+          
+          ```yaml
+          {{ item.yaml }}
+          ```
+          </details>
+          {% endfor %}
         {% else %}
-          _Ingen aktive forslag lige nu._
+          _Ingen aktive forslag fra {{ provider }}._
         {% endif %}
-      {% else %}
-        # ⚠️ Ingen AI fundet
-        Vær sikker på at du har konfigureret en AI-udbyder i integrationen.
-      {% endif %}
+        ---
+      {% endfor %}
 
-  # --- 3. SYSTEM KONTROL (Universel) ---
-  - type: entities
-    title: "AI Kontrolpanel"
-    show_header_toggle: false
-    entities:
-      # Her lister vi alle fundne AI-status sensorer automatisk
-      - type: custom:auto-entities
-        card:
-          type: section
-          label: "Forbindelses Status"
-        filter:
-          include:
-            - entity_id: "sensor.ai_suggester_*_status"
-        show_empty: false
-
-    footer:
-      type: buttons
-      entities:
-        - action_name: "Start Analyse"
-          service: ai_automation_suggester.generate_suggestions
-          icon: mdi:refresh
-          # Vi lader service_data være tom, så tager den 'default' AI
-          service_data: {}
-        - action_name: "Ryd Historik"
-          service: ai_automation_suggester.clear_suggestion_history
-          icon: mdi:delete-sweep
-
-  # --- 4. AVANCERET DIAGNOSTIK (Auto-list) ---
+  # --- 4. MANUELLE HANDLINGER (DYNAMISK LISTE) ---
   - type: custom:auto-entities
     card:
       type: entities
-      title: "AI Diagnostik"
+      title: "Hurtig Gem (Backup)"
+      show_header_toggle: false
     filter:
       include:
-        - entity_id: "sensor.ai_suggester_*_model"
-        - entity_id: "sensor.ai_suggester_*_last_error"
-        - entity_id: "sensor.ai_suggester_*_input_tokens"
+        - entity_id: "sensor.ai_suggester_*_suggestions"
+          options:
+            name: "Gem Nyeste Forslag"
+            icon: mdi:content-save-move
+            tap_action:
+              action: call-service
+              service: ai_automation_suggester.save_suggestion
+              service_data:
+                suggestion_id: "latest_1"
+    show_empty: false
+
+  # --- 5. HISTORIK (Loop gennem alle udbydere) ---
+  - type: markdown
+    content: >
+      {% set suggestion_sensors = states.sensor 
+        | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_suggestions$') 
+        | list %}
+      
+      # 📚 Forslagshistorik (Sidste 3 pr. udbyder)
+      
+      {% for sensor in suggestion_sensors %}
+        {% set provider = state_attr(sensor.entity_id, 'provider') %}
+        {% set history = state_attr(sensor.entity_id, 'history') %}
+        
+        {% if history and history | length > 0 %}
+          ### 🕒 Historik fra {{ provider }}
+          {% for item in history[:3] %}
+          **{{ item.timestamp[:16] }}**: {{ item.title }}
+          <details>
+          <summary>Se kode</summary>
+          ```yaml
+          {{ item.yaml }}
+          ```
+          </details>
+          {% endfor %}
+          ---
+        {% endif %}
+      {% endfor %}
+
+  # --- 6. SYSTEM KONTROL ---
+  - type: entities
+    title: Global AI Kontrol
+    entities:
+      - type: buttons
+        entities:
+          - action_name: Start Analyse
+            service: ai_automation_suggester.generate_suggestions
+            icon: mdi:refresh
+          - action_name: Ryd Al Historik
+            service: ai_automation_suggester.clear_suggestion_history
+            icon: mdi:delete-sweep

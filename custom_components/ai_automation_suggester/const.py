@@ -1,32 +1,33 @@
 """Constants for the AI Automation Suggester integration.
 
 Changelog:
-- Updated default AI models to 2026 versions (Gemini 2.0 Flash, GPT-4o, Claude 3.7).
-- Refined model keys to match current API capabilities.
+- Combined v2.0 requirements with 2026 model defaults.
+- Retained token budgeting (Input/Output tokens).
+- Kept all provider-specific temperature and reasoning keys.
 """
 
 # ─────────────────────────────────────────────────────────────
 # Core
 # ─────────────────────────────────────────────────────────────
-DOMAIN           = "ai_automation_suggester"
-PLATFORMS        = ["sensor"]
-CONFIG_VERSION   = 2  # config‑entry version (used by async_migrate_entry)
-INTEGRATION_NAME = "AI Automation Suggester"
+DOMAIN            = "ai_automation_suggester"
+PLATFORMS         = ["sensor"]
+CONFIG_VERSION    = 2  # config‑entry version
+INTEGRATION_NAME  = "AI Automation Suggester"
 
 # ─────────────────────────────────────────────────────────────
 # Token budgeting
 # ─────────────────────────────────────────────────────────────
-# Single legacy knob (kept for backward compatibility)
 CONF_MAX_TOKENS = "max_tokens"
-DEFAULT_MAX_TOKENS = 500  # legacy default – used for both budgets if new keys absent
+DEFAULT_MAX_TOKENS = 500
 
-# New, separate knobs (Issue #91)
-CONF_MAX_INPUT_TOKENS = "max_input_tokens"  # how much of the prompt we keep
-CONF_MAX_OUTPUT_TOKENS = "max_output_tokens"  # how long the AI response may be
+CONF_MAX_INPUT_TOKENS = "max_input_tokens"
+CONF_MAX_OUTPUT_TOKENS = "max_output_tokens"
 
 DEFAULT_MAX_INPUT_TOKENS = DEFAULT_MAX_TOKENS
 DEFAULT_MAX_OUTPUT_TOKENS = DEFAULT_MAX_TOKENS
 
+# Global / Service temperature
+CONF_TEMPERATURE = "temperature"
 DEFAULT_TEMPERATURE = 0.7
 
 # ─────────────────────────────────────────────────────────────
@@ -116,8 +117,8 @@ CONF_GENERIC_OPENAI_ENABLE_VALIDATION = "generic_openai_enable_validation"
 DEFAULT_MODELS = {
     "OpenAI": "gpt-4o", 
     "OpenAI Azure": "gpt-4o",
-    "Anthropic": "claude-3-7-sonnet-latest", # Eller nyere version
-    "Google": "gemini-2.0-flash", # Opdateret til en relevant flash-model
+    "Anthropic": "claude-3-7-sonnet-latest",
+    "Google": "gemini-2.0-flash",
     "Groq": "llama3-70b-8192",
     "LocalAI": "llama3",
     "Ollama": "llama3",

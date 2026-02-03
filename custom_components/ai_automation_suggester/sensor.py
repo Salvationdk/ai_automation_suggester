@@ -1,9 +1,9 @@
-"""Sensor platform for AI Automation Suggester.
+"""Sensor platform for AI Automation Suggester v2.0.
 
 Changelog:
-- Retained multi-sensor architecture from GitHub (Tokens, Model, Status).
-- Enhanced AISuggestionsSensor with 'history' and 'entities_processed_count'.
-- Maintained DeviceInfo for clean integration in HA UI.
+- Retained multi-sensor architecture (Tokens, Model, Status, Errors).
+- Integrated history and entities_processed_count from v2.0 Coordinator.
+- Maintained DeviceInfo for clean HA UI integration.
 """
 from __future__ import annotations
 import logging
@@ -92,20 +92,19 @@ class AIBaseSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=f"{INTEGRATION_NAME} ({entry.data.get(CONF_PROVIDER, 'Unknown')})",
-            manufacturer="Community",
+            manufacturer="Salvationdk",
             model=entry.data.get(CONF_PROVIDER, "Unknown"),
-            sw_version=str(entry.version) if entry.version else "N/A",
+            sw_version="2.0.0",
         )
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Håndter opdatering fra koordinatoren."""
-        if self.coordinator.last_update_success:
-            self._update_state_and_attributes()
+        self._update_state_and_attributes()
         super()._handle_coordinator_update()
 
 class AISuggestionsSensor(AIBaseSensor):
-    """Hovedsensoren der viser forslag og nu også historik."""
+    """Hovedsensoren der viser forslag og historik."""
     
     def _update_state_and_attributes(self) -> None:
         data = self.coordinator.data or {}
@@ -114,48 +113,67 @@ class AISuggestionsSensor(AIBaseSensor):
         
         # Sæt statustekst
         if s_list:
-            self._attr_native_value = "New Suggestions Available"
+            self._attr_native_value = f"{len(s_list)} New Suggestions"
         else:
-            self._attr_native_value = "No Suggestions"
+            self._attr_native_value = "No New Suggestions"
 
         # Eksponer forslag og historik som attributter
         first_sug = s_list[0] if s_list else {}
         self._attr_extra_state_attributes = {
             "suggestions_list": s_list,
-            "history": history, # NY: Bruges til historik-kortet
-            "suggestions": first_sug.get("title"),
-            "description": first_sug.get("description"),
-            "yaml_block": first_sug.get("yaml"),
+            "history": history,
+            "latest_suggestion_title": first_sug.get("title"),
+            "latest_suggestion_type": first_sug.get("type"),
             "last_update": data.get("last_update"),
             "entities_processed": data.get("entities_processed", []),
-            "entities_processed_count": len(data.get("entities_processed", [])), # NY: Statistik
+            "entities_processed_count": len(data.get("entities_processed", [])),
             "provider": self._entry.data.get(CONF_PROVIDER, "unknown"),
         }
 
 class AIProviderStatusSensor(AIBaseSensor):
+    """Viser om udbyderen er forbundet eller har fejl."""
     def _update_state_and_attributes(self) -> None:
         data = self.coordinator.data or {}
-        if not self.coordinator.last_update_success: self._attr_native_value = PROVIDER_STATUS_ERROR
-        elif not data: self._attr_native_value = PROVIDER_STATUS_INITIALIZING
-        elif data.get("last_error"): self._attr_native_value = PROVIDER_STATUS_ERROR
-        else: self._attr_native_value = PROVIDER_STATUS_CONNECTED
-        self._attr_extra_state_attributes = {"last_error_message": data.get("last_error"), "last_attempted_update": data.get("last_update")}
+        if not self.coordinator.last_update_success: 
+            self._attr_native_value = PROVIDER_STATUS_ERROR
+        elif data.get("last_error"): 
+            self._attr_native_value = PROVIDER_STATUS_ERROR
+        else: 
+            self._attr_native_value = PROVIDER_STATUS_CONNECTED
+        
+        self._attr_extra_state_attributes = {
+            "last_error": data.get("last_error"),
+            "last_update": data.get("last_update")
+        }
 
 class MaxInputTokensSensor(AIBaseSensor):
+    """Viser den konfigurerede grænse for input tokens."""
     def _update_state_and_attributes(self) -> None:
-        self._attr_native_value = self._entry.options.get(CONF_MAX_INPUT_TOKENS, self._entry.data.get(CONF_MAX_INPUT_TOKENS, DEFAULT_MAX_INPUT_TOKENS))
+        self._attr_native_value = self._entry.options.get(
+            CONF_MAX_INPUT_TOKENS, 
+            self._entry.data.get(CONF_MAX_INPUT_TOKENS, DEFAULT_MAX_INPUT_TOKENS)
+        )
 
 class MaxOutputTokensSensor(AIBaseSensor):
+    """Viser den konfigurerede grænse for output tokens."""
     def _update_state_and_attributes(self) -> None:
-        self._attr_native_value = self._entry.options.get(CONF_MAX_OUTPUT_TOKENS, self._entry.data.get(CONF_MAX_OUTPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS))
+        self._attr_native_value = self._entry.options.get(
+            CONF_MAX_OUTPUT_TOKENS, 
+            self._entry.data.get(CONF_MAX_OUTPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS)
+        )
 
 class AIModelSensor(AIBaseSensor):
+    """Viser hvilken model der aktuelt bruges."""
     def _update_state_and_attributes(self) -> None:
         provider = self._entry.data.get(CONF_PROVIDER)
         model_key = PROVIDER_TO_MODEL_KEY_MAP.get(provider)
-        self._attr_native_value = self._entry.options.get(model_key, self._entry.data.get(model_key, DEFAULT_MODELS.get(provider, "unknown")))
+        self._attr_native_value = self._entry.options.get(
+            model_key, 
+            self._entry.data.get(model_key, DEFAULT_MODELS.get(provider, "unknown"))
+        )
 
 class AILastErrorSensor(AIBaseSensor):
+    """Viser den seneste fejlbesked fra AI'en."""
     def _update_state_and_attributes(self) -> None:
         data = self.coordinator.data or {}
         err = data.get("last_error")

@@ -1,4 +1,10 @@
-"""Sensor platform for AI Automation Suggester."""
+"""Sensor platform for AI Automation Suggester.
+
+Changelog:
+- Retained multi-sensor architecture from GitHub (Tokens, Model, Status).
+- Enhanced AISuggestionsSensor with 'history' and 'entities_processed_count'.
+- Maintained DeviceInfo for clean integration in HA UI.
+"""
 from __future__ import annotations
 import logging
 from typing import cast
@@ -9,7 +15,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_UNKNOWN, EntityCategory
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -22,7 +28,7 @@ from .const import *
 
 _LOGGER = logging.getLogger(__name__)
 
-# Kortlægning af udbydere til model-nøgler (Beholdt fra din GitHub)
+# Kortlægning af udbydere til model-nøgler
 PROVIDER_TO_MODEL_KEY_MAP: dict[str, str] = {
     "OpenAI": CONF_OPENAI_MODEL,
     "Anthropic": CONF_ANTHROPIC_MODEL,
@@ -38,7 +44,7 @@ PROVIDER_TO_MODEL_KEY_MAP: dict[str, str] = {
     "Generic OpenAI": CONF_GENERIC_OPENAI_MODEL,
 }
 
-# Sensor beskrivelser (Beholdt fra din GitHub)
+# Sensor beskrivelser
 SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(key=SENSOR_KEY_SUGGESTIONS, name="AI Automation Suggestions", icon="mdi:robot-happy-outline"),
     SensorEntityDescription(key=SENSOR_KEY_STATUS, name="AI Provider Status", icon="mdi:lan-check", entity_category=EntityCategory.DIAGNOSTIC),
@@ -49,6 +55,7 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
 )
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Sætter alle sensorer op baseret på beskrivelserne ovenfor."""
     coordinator = cast(DataUpdateCoordinator, hass.data[DOMAIN][entry.entry_id])
     provider_name = entry.data.get(CONF_PROVIDER, "Unknown Provider")
     entities: list[SensorEntity] = []
@@ -76,6 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async_add_entities(entities, True)
 
 class AIBaseSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
+    """Base klasse for alle AI sensorer."""
     def __init__(self, coordinator, entry, description) -> None:
         super().__init__(coordinator)
         self.entity_description = description
@@ -91,18 +99,18 @@ class AIBaseSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Håndter opdatering fra koordinatoren."""
         if self.coordinator.last_update_success:
             self._update_state_and_attributes()
         super()._handle_coordinator_update()
 
-# --- HER ER DE VIGTIGE RETTELSER TIL SUGGESTIONS SENSOR ---
-
 class AISuggestionsSensor(AIBaseSensor):
-    """Viser om der er forslag og eksponerer listen som attributter."""
+    """Hovedsensoren der viser forslag og nu også historik."""
     
     def _update_state_and_attributes(self) -> None:
         data = self.coordinator.data or {}
         s_list = data.get("suggestions_list", [])
+        history = data.get("history", [])
         
         # Sæt statustekst
         if s_list:
@@ -110,20 +118,19 @@ class AISuggestionsSensor(AIBaseSensor):
         else:
             self._attr_native_value = "No Suggestions"
 
-        # Eksponer forslag som attributter (VIGTIGT for Lovelace)
+        # Eksponer forslag og historik som attributter
         first_sug = s_list[0] if s_list else {}
         self._attr_extra_state_attributes = {
             "suggestions_list": s_list,
+            "history": history, # NY: Bruges til historik-kortet
             "suggestions": first_sug.get("title"),
             "description": first_sug.get("description"),
             "yaml_block": first_sug.get("yaml"),
             "last_update": data.get("last_update"),
             "entities_processed": data.get("entities_processed", []),
+            "entities_processed_count": len(data.get("entities_processed", [])), # NY: Statistik
             "provider": self._entry.data.get(CONF_PROVIDER, "unknown"),
-            "entities_processed_count": len(data.get("entities_processed", [])),
         }
-
-# --- DE ØVRIGE SENSORER (Beholdt 1:1 fra GitHub for stabilitet) ---
 
 class AIProviderStatusSensor(AIBaseSensor):
     def _update_state_and_attributes(self) -> None:

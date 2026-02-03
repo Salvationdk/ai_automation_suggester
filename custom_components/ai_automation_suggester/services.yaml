@@ -1,25 +1,39 @@
 generate_suggestions:
   name: Generate Suggestions
-  description: Trigger the AI to analyze your smart home and generate new automation ideas, fixes, or blueprints.
+  description: Trigger the AI to analyze your smart home.
   fields:
     custom_prompt:
       name: Custom Prompt
-      description: Specific instructions for the AI (e.g., 'Focus on energy saving' or 'Fix the kitchen light automation').
+      description: Specific instructions for the AI.
       example: "Focus on energy saving"
       selector:
         text:
     entity_limit:
       name: Entity Limit
-      description: Maximum number of entities to send to the AI.
+      description: Max entities to send (Default 200).
       default: 200
       selector:
         number:
           min: 1
           max: 1000
-          mode: box
     all_entities:
       name: Scan All Entities
-      description: Force a full re-scan of all entities instead of just recently updated ones.
+      description: Force a full re-scan.
       default: false
       selector:
         boolean:
+
+save_suggestion:
+  name: Save Suggestion
+  description: Saves a specific AI suggestion to ai_automations.yaml or blueprints.
+  fields:
+    suggestion_id:
+      name: Suggestion ID
+      description: The unique ID of the suggestion to save.
+      required: true
+      selector:
+        text:
+
+clear_suggestion_history:
+  name: Clear Suggestion History
+  description: Wipes the history file (ai_suggestions_history.json) and clears the history log.

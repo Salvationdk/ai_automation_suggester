@@ -1,39 +1,66 @@
+###############################################################################
+# AI Automation Suggester - Services Configuration v2.0
+# Alle originale felter er bevaret og udvidet med v2.0 funktionalitet.
+###############################################################################
+
 generate_suggestions:
   name: Generate Suggestions
-  description: Trigger the AI to analyze your smart home.
+  description: Trigger the AI to analyze your smart home with specific parameters.
   fields:
     custom_prompt:
       name: Custom Prompt
-      description: Specific instructions for the AI.
-      example: "Focus on energy saving"
+      description: Specific instructions or additional context for the AI.
+      example: "Focus on energy saving and light automations."
       selector:
         text:
+          multiline: true
     entity_limit:
       name: Entity Limit
-      description: Max entities to send (Default 200).
+      description: Maximum number of entities to send to the AI (Default 200).
       default: 200
       selector:
         number:
           min: 1
           max: 1000
+          mode: box
     all_entities:
       name: Scan All Entities
-      description: Force a full re-scan.
+      description: Force a full re-scan of all entities instead of just changed ones.
       default: false
       selector:
         boolean:
+    domains:
+      name: Filter Domains
+      description: Only analyze specific domains (e.g., light, switch). Leave empty for all.
+      selector:
+        text:
+    automation_read_yaml:
+      name: Read Existing Automations
+      description: Allow the AI to read your current automations to suggest improvements.
+      default: false
+      selector:
+        boolean:
+    automation_limit:
+      name: Automation Limit
+      description: Max number of existing automations to analyze.
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 500
+          mode: box
 
 save_suggestion:
   name: Save Suggestion
-  description: Saves a specific AI suggestion to ai_automations.yaml or blueprints.
+  description: Saves a specific AI suggestion to ai_automations.yaml or as a blueprint.
   fields:
     suggestion_id:
       name: Suggestion ID
-      description: The unique ID of the suggestion to save.
+      description: The unique ID from the sensor or 'latest_1', 'latest_2' for dashboard buttons.
       required: true
       selector:
         text:
 
 clear_suggestion_history:
   name: Clear Suggestion History
-  description: Wipes the history file (ai_suggestions_history.json) and clears the history log.
+  description: Wipes the history file (ai_suggestions_history.json) and clears the history sensor.

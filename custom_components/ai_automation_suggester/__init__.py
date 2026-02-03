@@ -1,11 +1,10 @@
-"""The AI Automation Suggester integration v2.0.
+"""The AI Automation Suggester integration v2.2.
 
 Changelog:
-- Added AIAutomationProvidersView for dynamic provider selection in dashboard.
-- Combined migration and service logic with automatic resource registration.
-- Added automatic creation of ai_automations.yaml.
-- Added static path registration for dashboard card.
-- Implemented temperature handling in generate_suggestions service.
+- Fully optimized for Multi-Provider discovery.
+- Fixed missing INTEGRATION_NAME import for DeviceInfo.
+- Enhanced API views to provide consistent data for the JS dashboard.
+- Retained migration logic and automatic file creation.
 """
 
 import logging
@@ -29,7 +28,8 @@ from .const import (
     SERVICE_GENERATE_SUGGESTIONS,
     ATTR_PROVIDER_CONFIG,
     ATTR_CUSTOM_PROMPT,
-    CONFIG_VERSION
+    CONFIG_VERSION,
+    INTEGRATION_NAME  # Tilføjet for stabilitet
 )
 from .coordinator import AIAutomationCoordinator
 
@@ -41,7 +41,7 @@ CARD_FILENAME = "ai-automation-suggester-card.js"
 CARD_PATH = f"{URL_BASE}/{CARD_FILENAME}"
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate old entry."""
+    """Migrerer gamle indstillinger til v2.0+."""
     _LOGGER.info("Migrating from version %s", config_entry.version)
     if config_entry.version < CONFIG_VERSION:
         new_data = {**config_entry.data}
@@ -53,7 +53,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the AI Automation Suggester component."""
+    """Overordnet setup af AI Suggester komponenten."""
     hass.data.setdefault(DOMAIN, {})
 
     # 1. Registrer statisk sti til JS-kortet
@@ -61,13 +61,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     if static_dir.exists():
         hass.http.register_static_path(URL_BASE, str(static_dir), cache_headers=False)
 
-    # Registrer API views for frontend-interaktion
+    # 2. Registrer API views (Instanser af klasserne)
     hass.http.register_view(AIAutomationSuggestionsView())
     hass.http.register_view(AIAutomationActionView())
-    hass.http.register_view(AIAutomationProvidersView()) # <--- NYT VIEW TIL DROPDOWN
+    hass.http.register_view(AIAutomationProvidersView())
 
     async def handle_generate_suggestions(call: ServiceCall) -> None:
-        """Service handler med fuld support for v2.0 parametre."""
+        """Service handler der dirigerer forespørgsler til den rigtige AI."""
         provider_config = call.data.get(ATTR_PROVIDER_CONFIG)
         custom_prompt = call.data.get(ATTR_CUSTOM_PROMPT)
         all_entities = call.data.get("all_entities", False)
@@ -87,6 +87,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if provider_config:
                 coordinator = hass.data[DOMAIN].get(provider_config)
             else:
+                # Find den første ledige koordinator hvis intet ID er givet
                 for entry_id, coord in hass.data[DOMAIN].items():
                     if isinstance(coord, AIAutomationCoordinator):
                         coordinator = coord
@@ -95,6 +96,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if coordinator is None:
                 raise ServiceValidationError("No AI Automation Suggester provider configured")
 
+            # Gem original prompt og sæt nye parametre
             original_prompt = coordinator.SYSTEM_PROMPT
             if custom_prompt:
                 coordinator.SYSTEM_PROMPT = f"{coordinator.SYSTEM_PROMPT}\n\nAdditional User Context:\n{custom_prompt}"
@@ -109,6 +111,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             try:
                 await coordinator.async_request_refresh()
             finally:
+                # Nulstil altid til standard efter kørsel
                 coordinator.SYSTEM_PROMPT = original_prompt
                 coordinator.scan_all = False
                 coordinator.selected_domains = []
@@ -121,7 +124,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up entry from config UI."""
+    """Opsætning af en specifik AI-instans."""
     await async_ensure_files(hass)
     await async_register_resource(hass)
 
@@ -133,6 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_added_to_hass()
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
+        # Registrer lokale services for denne instans
         async def handle_save_suggestion(call: ServiceCall):
             await coordinator.handle_save_suggestion(call)
 
@@ -146,12 +150,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
         return True
+
     except Exception as err:
         _LOGGER.error("Failed to setup integration: %s", err)
         raise ConfigEntryNotReady from err
 
 async def async_ensure_files(hass: HomeAssistant):
-    """Sikrer at ai_automations.yaml eksisterer."""
+    """Laver ai_automations.yaml hvis den mangler."""
     path = hass.config.path("ai_automations.yaml")
     if not os.path.exists(path):
         def create_file():
@@ -160,7 +165,7 @@ async def async_ensure_files(hass: HomeAssistant):
         await hass.async_add_executor_job(create_file)
 
 async def async_register_resource(hass: HomeAssistant):
-    """Registrerer automatisk dashboard-kortet i Lovelace."""
+    """Registrerer JS-kortet i Lovelace ressourcer."""
     resources = hass.data.get("lovelace", {}).get("resources")
     if resources:
         if not any(CARD_PATH in r.get("url", "") for r in resources.async_items()):
@@ -170,7 +175,7 @@ async def async_register_resource(hass: HomeAssistant):
             })
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload entry."""
+    """Fjerner en AI-instans korrekt."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
@@ -178,16 +183,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload entry."""
+    """Genindlæser integrationen."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
 
 # ─────────────────────────────────────────────────────────────
-# API Views
+# API VIEWS (Kommunikation med Dashboard)
 # ─────────────────────────────────────────────────────────────
 
 class AIAutomationProvidersView(HomeAssistantView):
-    """API View der lister alle installerede AI-instanser til dropdown menuen."""
+    """Henter alle aktive AI-instanser til rullemenuen."""
     url = "/api/ai_automation_suggester/providers"
     name = "api:ai_automation_suggester:providers"
     requires_auth = True
@@ -204,7 +209,7 @@ class AIAutomationProvidersView(HomeAssistantView):
         return self.json(providers)
 
 class AIAutomationSuggestionsView(HomeAssistantView):
-    """API View der leverer data til det visuelle JS-kort."""
+    """Samler forslag fra alle kørende koordinatorer til JS-kortet."""
     url = "/api/ai_automation_suggester/suggestions"
     name = "api:ai_automation_suggester:suggestions"
     requires_auth = True
@@ -224,7 +229,7 @@ class AIAutomationSuggestionsView(HomeAssistantView):
                             if not isinstance(item, dict): continue
                             
                             all_suggestions.append({
-                                "id": str(uuid.uuid4()),
+                                "id": item.get("suggestion_id", str(uuid.uuid4())),
                                 "suggestion_id": item.get("suggestion_id", "unknown"),
                                 "title": item.get("title", "New Suggestion"),
                                 "shortDescription": item.get("description", "")[:100] + "...",
@@ -232,13 +237,13 @@ class AIAutomationSuggestionsView(HomeAssistantView):
                                 "yamlCode": item.get("yaml", ""),
                                 "type": item.get("type", "unknown"),
                                 "timestamp": str(data.get("last_update", "")),
-                                "provider": coordinator._entry.title, # Viser instansens navn
+                                "provider": coordinator.entry.title, # Viser instansens navn (f.eks. 'AI (Google)')
                                 "showDetails": False
                             })
         return self.json(all_suggestions)
 
 class AIAutomationActionView(HomeAssistantView):
-    """API View der håndterer 'Accept/Decline'."""
+    """Håndterer Accept/Decline handlinger fra kortet."""
     url = "/api/ai_automation_suggester/{action}/{suggestion_id}"
     name = "api:ai_automation_suggester:action"
     requires_auth = True

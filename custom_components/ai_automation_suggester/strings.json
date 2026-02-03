@@ -1,133 +1,111 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Set up AI Automation Suggester",
-                "description": "Choose your AI provider to start generating smart automations.",
-                "data": {
-                    "provider": "Select AI Provider"
-                }
-            },
-            "provider_config": {
-                "title": "Configure Provider",
-                "description": "Enter the API details for your selected provider.",
-                "data": {
-                    "openai_api_key": "OpenAI API Key",
-                    "openai_model": "OpenAI Model (e.g., gpt-4o)",
-                    "openai_temperature": "Creativity (Temperature 0.0 - 1.0)",
-                    "google_api_key": "Google Gemini API Key",
-                    "google_model": "Google Model (e.g., gemini-2.0-flash)",
-                    "google_temperature": "Temperature",
-                    "anthropic_api_key": "Anthropic API Key",
-                    "anthropic_model": "Anthropic Model (e.g., claude-3-5-sonnet-20240620)",
-                    "anthropic_temperature": "Temperature",
-                    "localai_ip": "LocalAI IP Address",
-                    "localai_port": "LocalAI Port",
-                    "localai_https": "Use HTTPS",
-                    "localai_model": "LocalAI Model",
-                    "localai_temperature": "Temperature",
-                    "ollama_ip": "Ollama IP Address",
-                    "ollama_port": "Ollama Port",
-                    "ollama_https": "Use HTTPS",
-                    "ollama_model": "Ollama Model",
-                    "ollama_temperature": "Temperature",
-                    "ollama_disable_think": "Disable 'Think' tags (for DeepSeek)",
-                    "openai_azure_api_key": "Azure API Key",
-                    "openai_azure_endpoint": "Azure Endpoint (e.g. my-resource.openai.azure.com)",
-                    "openai_azure_deployment_id": "Deployment ID",
-                    "openai_azure_api_version": "API Version (e.g. 2024-02-15-preview)",
-                    "openai_azure_temperature": "Temperature",
-                    "groq_api_key": "Groq API Key",
-                    "groq_model": "Groq Model",
-                    "groq_temperature": "Temperature",
-                    "mistral_api_key": "Mistral API Key",
-                    "mistral_model": "Mistral Model",
-                    "mistral_temperature": "Temperature",
-                    "perplexity_api_key": "Perplexity API Key",
-                    "perplexity_model": "Perplexity Model",
-                    "perplexity_temperature": "Temperature",
-                    "openrouter_api_key": "OpenRouter API Key",
-                    "openrouter_model": "OpenRouter Model",
-                    "openrouter_temperature": "Temperature",
-                    "openrouter_reasoning_max_tokens": "Reasoning Max Tokens",
-                    "generic_openai_api_key": "API Key (Optional)",
-                    "generic_openai_api_endpoint": "Base URL (e.g. http://192.168.1.5:1234/v1)",
-                    "generic_openai_model": "Model Name",
-                    "generic_openai_temperature": "Temperature",
-                    "custom_openai_api_key": "Custom API Key",
-                    "custom_openai_endpoint": "Custom Endpoint URL",
-                    "custom_openai_model": "Custom Model",
-                    "custom_openai_temperature": "Temperature"
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Failed to connect",
-            "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
-        },
-        "abort": {
-            "already_configured": "Device is already configured"
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up AI Automation Suggester",
+        "description": "Choose your AI provider to start generating smart automations.",
+        "data": {
+          "provider": "Select AI Provider"
         }
+      },
+      "provider_config": {
+        "title": "Configure Provider",
+        "description": "Enter the API details for your selected provider.",
+        "data": {
+          "openai_api_key": "OpenAI API Key",
+          "openai_model": "OpenAI Model",
+          "google_api_key": "Google Gemini API Key",
+          "google_model": "Google Model",
+          "anthropic_api_key": "Anthropic API Key",
+          "anthropic_model": "Anthropic Model",
+          "localai_ip": "LocalAI IP Address",
+          "localai_port": "LocalAI Port",
+          "localai_https": "Use HTTPS",
+          "localai_model": "LocalAI Model",
+          "ollama_ip": "Ollama IP Address",
+          "ollama_port": "Ollama Port",
+          "ollama_https": "Use HTTPS",
+          "ollama_model": "Ollama Model",
+          "ollama_disable_think": "Disable 'Think' tags (for DeepSeek)",
+          "openai_azure_api_key": "Azure API Key",
+          "openai_azure_endpoint": "Azure Endpoint",
+          "openai_azure_deployment_id": "Deployment ID",
+          "openai_azure_api_version": "API Version",
+          "groq_api_key": "Groq API Key",
+          "groq_model": "Groq Model",
+          "mistral_api_key": "Mistral API Key",
+          "mistral_model": "Mistral Model",
+          "perplexity_api_key": "Perplexity API Key",
+          "perplexity_model": "Perplexity Model",
+          "openrouter_api_key": "OpenRouter API Key",
+          "openrouter_model": "OpenRouter Model",
+          "generic_openai_api_key": "API Key (Optional)",
+          "generic_openai_api_endpoint": "Base URL",
+          "generic_openai_model": "Model Name",
+          "custom_openai_api_key": "Custom API Key",
+          "custom_openai_endpoint": "Custom Endpoint URL",
+          "custom_openai_model": "Custom Model",
+          "temperature": "Default Temperature (0.0 - 1.0)"
+        }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Settings",
-                "data": {
-                    "max_tokens": "Max Tokens (Legacy)",
-                    "max_input_tokens": "Max Input Tokens",
-                    "max_output_tokens": "Max Output Tokens",
-                    "openai_temperature": "Temperature"
-                }
-            }
-        }
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
     },
-    "entity": {
-        "sensor": {
-            "suggestions": {
-                "name": "AI Suggestions",
-                "state_attributes": {
-                    "suggestions_list": {
-                        "name": "Suggestions List"
-                    },
-                    "last_update": {
-                        "name": "Last Update"
-                    },
-                    "provider": {
-                        "name": "Provider"
-                    }
-                }
-            },
-            "status": {
-                "name": "AI Status",
-                "state": {
-                    "connected": "Connected",
-                    "disconnected": "Disconnected",
-                    "error": "Error",
-                    "initializing": "Initializing"
-                }
-            }
-        }
-    },
-    "services": {
-        "generate_suggestions": {
-            "name": "Generate Suggestions",
-            "description": "Trigger the AI to analyze your smart home and generate new automation ideas, fixes, or blueprints.",
-            "fields": {
-                "custom_prompt": {
-                    "name": "Custom Prompt",
-                    "description": "Specific instructions for the AI (e.g., 'Focus on energy saving' or 'Fix the kitchen light automation')."
-                },
-                "entity_limit": {
-                    "name": "Entity Limit",
-                    "description": "Maximum number of entities to send to the AI (Higher = more context but slower/more expensive)."
-                },
-                "scan_all_entities": {
-                    "name": "Scan All Entities",
-                    "description": "Force a full re-scan of all entities instead of just recently updated ones."
-                }
-            }
-        }
+    "abort": {
+      "already_configured": "Device is already configured"
     }
+  },
+  "services": {
+    "generate_suggestions": {
+      "name": "Generate Suggestions",
+      "description": "Trigger the AI to analyze your smart home. Uses memory to avoid previously rejected suggestions.",
+      "fields": {
+        "custom_prompt": {
+          "name": "Custom Prompt",
+          "description": "Specific instructions (e.g., 'Focus on energy saving')."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "AI Creativity: 0.1 is best for YAML, 0.7+ is better for ideas."
+        },
+        "entity_limit": {
+          "name": "Entity Limit",
+          "description": "Max number of entities to send to the AI."
+        },
+        "all_entities": {
+          "name": "Scan All Entities",
+          "description": "Force a full re-scan of all entities."
+        },
+        "domains": {
+          "name": "Filter Domains",
+          "description": "Only analyze specific domains (e.g. light, switch)."
+        },
+        "automation_read_yaml": {
+          "name": "Read Existing Automations",
+          "description": "Allow AI to read your current automations."
+        },
+        "automation_limit": {
+          "name": "Automation Limit",
+          "description": "Max existing automations to analyze."
+        }
+      }
+    },
+    "save_suggestion": {
+      "name": "Save Suggestion",
+      "description": "Saves a suggestion to ai_automations.yaml or blueprints.",
+      "fields": {
+        "suggestion_id": {
+          "name": "Suggestion ID",
+          "description": "The unique ID or 'latest_1' / 'latest_2' from the dashboard."
+        }
+      }
+    },
+    "clear_suggestion_history": {
+      "name": "Clear Suggestion History",
+      "description": "Wipes the history file and clears the history sensor log."
+    }
+  }
 }

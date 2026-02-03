@@ -1,89 +1,101 @@
 ###############################################################################
-# AI Automation Suggester - Dashboard Template (v2.0)
+# AI Automation Suggester - Dashboard Template (v2.2 PRO)
 # 
 # Dependencies: 
 # - HACS: Mushroom Cards (for chips and buttons)
 # - HACS: AI Automation Suggester Integration
+# - At ai_automations.yaml er inkluderet i din configuration.yaml
 #
-# Instructions:
-# 1. Ensure 'ai_automations.yaml' is included in your configuration.yaml
-# 2. Add a new 'Manual' card to your dashboard and paste this YAML.
+# Changelog v2.2:
+# - Opdateret til nye entity_ids (sensor.ai_suggester_...)
+# - Tilføjet det interaktive JS-kort som center-hub.
+# - Dynamisk understøttelse af flere AI-udbydere samtidigt.
 ###############################################################################
 
 type: vertical-stack
 cards:
-  # --- 1. STATUS & MODEL INFO ---
+  # --- 1. STATUS & MODEL INFO (DYNAMISK OVERBLIK) ---
   - type: custom:mushroom-chips-card
     alignment: start
     chips:
+      # Denne chip finder selv din første aktive AI og viser dens forslag
       - type: template
-        entity: sensor.ai_automation_suggestions_google
-        icon: mdi:robot-confused-outline
-        icon_color: "{{ 'yellow' if states(entity) == 'New Suggestions Available' else 'green' }}"
-        content: "{{ states(entity) | replace('_', ' ') }}"
+        content: >
+          {% set sensor = states.sensor | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_suggestions$') | map(attribute='entity_id') | first | default('none') %}
+          {% if sensor != 'none' %}
+            Forslag: {{ states(sensor) }}
+          {% else %}
+            Ingen AI fundet
+          {% endif %}
+        icon: mdi:robot-happy-outline
+        icon_color: "{{ 'orange' if states(entity) | int > 0 else 'green' }}"
+        tap_action:
+          action: more-info
+      
+      # Chip til Model-navn
       - type: template
-        entity: sensor.ai_model_in_use_google
+        content: >
+          {% set sensor = states.sensor | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_model$') | map(attribute='entity_id') | first | default('none') %}
+          {{ states(sensor) if sensor != 'none' else 'N/A' }}
         icon: mdi:brain
-        content: "{{ states(entity) }}"
-      - type: template
-        entity: sensor.ai_provider_status_google
-        icon: mdi:lan-check
-        icon_color: "{{ 'green' if is_state(entity,'connected') else 'red' }}"
-        content: "Status: {{ states(entity) }}"
 
-  # --- 2. ACTIVE SUGGESTIONS (WITH DIRECT SAVE) ---
+  # --- 2. DET INTERAKTIVE JS-KORT (Accept / Ignore Hub) ---
+  - type: custom:ai-automation-suggester-card
+    title: "AI Quick Actions"
+    # TIP: Klik på 'Rediger' i UI for at vælge din udbyder i dropdown-menuen.
+
+  # --- 3. AKTIVE FORSLAG MED YAML (Fra v2.0) ---
   - type: markdown
     content: >
-      {% set suggestions = state_attr('sensor.ai_automation_suggestions_google', 'suggestions_list') %}
-      # 🤖 Aktive AI Forslag ({{ suggestions | length if suggestions else 0 }} stk)
+      {% set sensors = states.sensor | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_suggestions$') | list %}
+      # 🤖 Aktive AI Forslag
       
-      {% if suggestions and suggestions is iterable and suggestions | length > 0 %}
-        {% for item in suggestions %}
-        ### {{ loop.index }}. {{ item.title }}
-        **Type:** `{{ item.type | upper }}`
+      {% for s in sensors %}
+        {% set suggestions = state_attr(s.entity_id, 'suggestions_list') %}
+        {% set provider = state_attr(s.entity_id, 'provider') %}
         
-        {{ item.description }}
-        
-        {% if item.yaml %}
-        <details>
-        <summary>🔍 Se YAML kode (Klik for at folde ud)</summary>
-        
-        ```yaml
-        {{ item.yaml }}
-        ```
-        </details>
+        {% if suggestions and suggestions | length > 0 %}
+          ### 🧠 Fra: {{ provider }}
+          {% for item in suggestions %}
+          **{{ loop.index }}. {{ item.title }}** (`{{ item.type | upper }}`)
+          
+          {{ item.description }}
+          
+          <details>
+          <summary>🔍 Se YAML kode (Klik for at folde ud)</summary>
+          
+          ```yaml
+          {{ item.yaml }}
+          ```
+          </details>
+          ---
+          {% endfor %}
         {% endif %}
-        ---
-        {% endfor %}
-      {% else %}
-        _Ingen nye forslag tilgængelige lige nu. Tryk på knappen herunder for at starte en analyse._
+      {% endfor %}
+      
+      {% if sensors | length == 0 %}
+        _Ingen forslag tilgængelige. Tryk på knappen herunder for at starte en analyse._
       {% endif %}
 
-  - type: horizontal-stack
-    cards:
-      {% set suggestions = state_attr('sensor.ai_automation_suggestions_google', 'suggestions_list') %}
-      {% if suggestions and suggestions is iterable %}
-        {% for item in suggestions[:3] %}
-        - type: button
-          name: "Gem #{{ loop.index }}"
-          icon: mdi:content-save-move
-          tap_action:
-            action: call-service
-            service: ai_automation_suggester.save_suggestion
-            service_data:
-              suggestion_id: "{{ item.suggestion_id }}"
-        {% endfor %}
-      {% endif %}
-
-  # --- 3. SYSTEM CONTROLS ---
+  # --- 4. SYSTEM KONTROL ---
   - type: entities
     title: System Kontrol
     show_header_toggle: false
     entities:
-      - entity: sensor.last_error_message_google
-        name: Seneste Fejl
+      # Dynamisk liste over fejlbeskeder
+      - type: custom:auto-entities
+        card:
+          type: entities
+        filter:
+          include:
+            - entity_id: "sensor.ai_suggester_*_last_error"
+              options:
+                name: "Seneste Fejl"
+        show_empty: false
+        
+      # Antal enheder analyseret (fra den første udbyder)
       - type: attribute
-        entity: sensor.ai_automation_suggestions_google
+        entity: sensor.ai_suggester_google_suggestions
         attribute: entities_processed_count
         name: Enheder Analyseret
         icon: mdi:chart-bubble
@@ -94,31 +106,32 @@ cards:
           service: ai_automation_suggester.generate_suggestions
           icon: mdi:refresh
 
-  # --- 4. HISTORY LOG (RESTORE OLD SUGGESTIONS) ---
+  # --- 5. FORSLAGSHISTORIK (Sidste 10 - Fra v2.0) ---
   - type: markdown
     content: >
-      # 📚 Forslagshistorik (Sidste 10)
-      {% set history = state_attr('sensor.ai_automation_suggestions_google', 'history') %}
+      # 📚 Forslagshistorik
+      {% set sensors = states.sensor | selectattr('entity_id', 'search', '^sensor\.ai_suggester_.*_suggestions$') | list %}
       
-      {% if history and history is iterable and history | length > 0 %}
-        {% for item in history[:10] %}
-        ### 🕒 {{ item.timestamp[:10] }} - {{ item.title }}
-        {{ item.description }}
-        
-        <details>
-        <summary>🔍 Se den gamle YAML kode</summary>
-        
-        ```yaml
-        {{ item.yaml }}
-        ```
-        </details>
-        ---
-        {% endfor %}
-      {% else %}
-        _Historikken er tom._
-      {% endif %}
+      {% for s in sensors %}
+        {% set history = state_attr(s.entity_id, 'history') %}
+        {% if history and history | length > 0 %}
+          ### 🕒 Historik fra {{ state_attr(s.entity_id, 'provider') }}
+          {% for item in history[:10] %}
+          **{{ item.timestamp[:10] }} - {{ item.title }}**
+          
+          <details>
+          <summary>🔍 Se den gamle YAML kode</summary>
+          
+          ```yaml
+          {{ item.yaml }}
+          ```
+          </details>
+          {% endfor %}
+          ---
+        {% endif %}
+      {% endfor %}
 
-  # --- 5. MAINTENANCE ---
+  # --- 6. VEDLIGEHOLDELSE ---
   - type: button
     name: Ryd Al AI Historik
     icon: mdi:delete-sweep

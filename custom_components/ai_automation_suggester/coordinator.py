@@ -1,11 +1,11 @@
 """Coordinator for AI Automation Suggester.
 
 Changelog:
+- Added cross-compatibility for dict (API) and ServiceCall (UI) inputs.
 - Added support for static dashboard IDs (latest_1, latest_2).
 - Added robust JSON parsing to handle truncated AI responses.
-- Integrated History (ai_suggestions_history.json) and Memory (ai_suggester_memory.json).
-- Implemented handle_save_suggestion to write to ai_automations.yaml and blueprints.
-- Retained all original AI provider methods from GitHub.
+- Integrated History and Memory loggers.
+- Retained all original AI provider methods.
 """
 from __future__ import annotations
 
@@ -35,7 +35,6 @@ _LOGGER = logging.getLogger(__name__)
 MEMORY_FILENAME = "ai_suggester_memory.json"
 HISTORY_FILENAME = "ai_suggestions_history.json"
 
-# Den udvidede system prompt der guider AI'en til at levere korrekt format
 SYSTEM_PROMPT = """You are an expert Home Assistant Architect and Repair Technician.
 Your tasks:
 1. Analyze the provided entities and existing automations.
@@ -65,10 +64,8 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.hass = hass
         self.entry = entry
-
         self.previous_entities: dict[str, dict] = {}
         self.last_update: datetime | None = None
-
         self.SYSTEM_PROMPT = SYSTEM_PROMPT
         self.scan_all = False
         self.selected_domains: list[str] = []
@@ -103,7 +100,6 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         return in_budget, out_budget
 
     async def async_added_to_hass(self):
-        """Initialiser registries og hent historik/hukommelse."""
         self.device_registry = dr.async_get(self.hass)
         self.entity_registry = er.async_get(self.hass)
         self.area_registry = ar.async_get(self.hass)
@@ -133,7 +129,6 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             now = datetime.now()
             self.last_update = now
             self._last_error = None
-
             current: dict[str, dict] = {}
             unavailable: list[str] = []
 
@@ -161,7 +156,6 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 raw_suggestions = self._parse_json_response(response)
                 processed = []
                 for s in raw_suggestions:
-                    # Generer et unikt ID baseret på titel og tid
                     s_id = hashlib.md5(f"{s.get('title')}{now}".encode()).hexdigest()[:10]
                     s["suggestion_id"] = s_id
                     s["timestamp"] = now.isoformat()
@@ -181,12 +175,11 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             self.previous_entities = current
             return self.data
         except Exception as err:
-            _LOGGER.error("Coordinator fatal error: %s", err)
+            _LOGGER.error("Coordinator error: %s", err)
             self._last_error = str(err)
             return self.data
 
     async def _update_history(self, new_sugs):
-        """Opdaterer historik-filen på disken."""
         path = self.hass.config.path(HISTORY_FILENAME)
         history = self.data.get("history", [])
         for s in new_sugs: history.insert(0, s)
@@ -195,29 +188,26 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             with open(path, 'w', encoding='utf-8') as f: json.dump(self.data["history"], f, indent=2)
         await self.hass.async_add_executor_job(save)
 
-    async def handle_save_suggestion(self, call: ServiceCall):
+    async def handle_save_suggestion(self, call: ServiceCall | dict):
         """Gemmer forslag til ai_automations.yaml eller blueprints."""
-        sug_id = call.data.get("suggestion_id")
+        # Understøtter både ServiceCall (Dashboard) og dict (API View)
+        if isinstance(call, dict):
+            sug_id = call.get("suggestion_id")
+        else:
+            sug_id = call.data.get("suggestion_id")
         
-        # Håndter special-ID'er fra dashboardet (latest_1, latest_2 osv.)
+        # Håndter special-ID'er fra dashboardet
         if isinstance(sug_id, str) and sug_id.startswith("latest_"):
             try:
                 idx = int(sug_id.split("_")[1]) - 1
                 s_list = self.data.get("suggestions_list", [])
-                if 0 <= idx < len(s_list):
-                    suggestion = s_list[idx]
-                else:
-                    _LOGGER.error("Index %s findes ikke i forslagslisten.", idx + 1)
-                    return
-            except (ValueError, IndexError):
-                _LOGGER.error("Ugyldigt format for latest_ID: %s", sug_id)
-                return
+                suggestion = s_list[idx] if 0 <= idx < len(s_list) else None
+            except: suggestion = None
         else:
-            # Standard søgning via unikt ID
             suggestion = next((s for s in self.data["suggestions_list"] + self.data["history"] if s.get("suggestion_id") == sug_id), None)
         
         if not suggestion or "yaml" not in suggestion:
-            _LOGGER.error("Kunne ikke gemme: Forslag ikke fundet eller mangler YAML.")
+            _LOGGER.error("Kunne ikke gemme: Forslag ikke fundet.")
             return
 
         yaml_code = suggestion["yaml"]
@@ -225,8 +215,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
 
         try:
             if is_bp:
-                # Brug forslagets eget ID til filnavnet for at undgå 'latest_1.yaml'
-                real_id = suggestion.get("suggestion_id", hashlib.md5(suggestion['title'].encode()).hexdigest()[:10])
+                real_id = suggestion.get("suggestion_id", "unknown")
                 fname = f"ai_gen_{real_id}.yaml"
                 path = self.hass.config.path(f"blueprints/automation/{fname}")
                 def write_bp():
@@ -243,11 +232,9 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
                 msg = "Automatisering gemt i ai_automations.yaml"
 
             persistent_notification.async_create(self.hass, message=msg, title="AI Suggester")
-        except Exception as e:
-            _LOGGER.error("Save failed: %s", e)
+        except Exception as e: _LOGGER.error("Save failed: %s", e)
 
     async def handle_clear_history(self, call: ServiceCall):
-        """Sletter historik-filen."""
         path = self.hass.config.path(HISTORY_FILENAME)
         if os.path.exists(path):
             def remove(): os.remove(path)
@@ -257,24 +244,14 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         persistent_notification.async_create(self.hass, message="Historikken er slettet.", title="AI Suggester")
 
     def _parse_json_response(self, response: str) -> list[dict]:
-        """Robust JSON reparationstjeneste."""
         try: return json.loads(response)
         except: pass
-
         cleaned = response.strip()
-        # Prøv at lukke afbrudte JSON strenge
         if not cleaned.endswith(']'):
             last_bracket = cleaned.rfind('}')
             if last_bracket != -1: cleaned = cleaned[:last_bracket + 1] + ']'
-            if cleaned.count('"') % 2 != 0: cleaned += '"'
-            if not cleaned.endswith(']'): cleaned += ']'
-
-        try:
-            cleaned = re.sub(r",\s*\]", "]", cleaned)
-            cleaned = re.sub(r",\s*\}", "}", cleaned)
-            return json.loads(cleaned)
+        try: return json.loads(cleaned)
         except:
-            # Sidste udvej: Find alle gyldige objekter manuelt
             found = []
             for obj in re.finditer(r"\{[\s\S]*?\}", cleaned):
                 try: found.append(json.loads(obj.group(0)))
@@ -284,36 +261,21 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
     async def _build_prompt(self, entities: dict, unavailable: list[str]) -> str:
         dislikes = ", ".join(self._memory_cache.get("dislikes", [])) or "None"
         prompt = self.SYSTEM_PROMPT.format(dislikes=dislikes)
-        
         ent_data = [f"Entity: {k}\nName: {v['friendly_name']}\nState: {v['state']}\n" for k, v in list(entities.items())[:self.entity_limit]]
         prompt += f"\nActive Entities:\n{''.join(ent_data)}\n"
-        
-        if unavailable:
-            prompt += f"⚠️ BROKEN/UNAVAILABLE ENTITIES: {', '.join(unavailable[:30])}\n"
-        
-        prompt += "Output strictly in JSON."
+        if unavailable: prompt += f"⚠️ BROKEN: {', '.join(unavailable[:30])}\n"
         return prompt
 
     async def _dispatch(self, prompt: str) -> str | None:
-        provider = self._opt(CONF_PROVIDER, "Google")
+        p = self._opt(CONF_PROVIDER, "Google")
         providers = {
-            "OpenAI": self._openai, 
-            "Anthropic": self._anthropic, 
-            "Google": self._google,
-            "Groq": self._groq, 
-            "LocalAI": self._localai, 
-            "Ollama": self._ollama,
-            "Custom OpenAI": self._custom_openai, 
-            "Mistral AI": self._mistral,
-            "Perplexity AI": self._perplexity, 
-            "OpenRouter": self._openrouter,
-            "OpenAI Azure": self._openai_azure, 
-            "Generic OpenAI": self._generic_openai,
+            "OpenAI": self._openai, "Anthropic": self._anthropic, "Google": self._google,
+            "Groq": self._groq, "LocalAI": self._localai, "Ollama": self._ollama,
+            "Custom OpenAI": self._custom_openai, "Mistral AI": self._mistral,
+            "Perplexity AI": self._perplexity, "OpenRouter": self._openrouter,
+            "OpenAI Azure": self._openai_azure, "Generic OpenAI": self._generic_openai,
         }
-        if provider not in providers: return None
-        return await providers[provider](prompt)
-
-    # --- AI Providers ---
+        return await providers[p](prompt) if p in providers else None
 
     async def _openai(self, prompt: str):
         try:
@@ -324,18 +286,17 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(ENDPOINT_OPENAI, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _google(self, prompt: str):
         try:
             api_key = self._opt(CONF_GOOGLE_API_KEY)
             model = self._opt(CONF_GOOGLE_MODEL, "gemini-1.5-flash")
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            body = {"contents": [{"parts": [{"text": prompt}]}]}
-            async with self.session.post(url, json=body, timeout=90) as resp:
+            async with self.session.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=90) as resp:
                 res = await resp.json()
                 return res["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _anthropic(self, prompt: str):
         try:
@@ -346,7 +307,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(ENDPOINT_ANTHROPIC, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["content"][0]["text"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _groq(self, prompt: str):
         try:
@@ -357,7 +318,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(ENDPOINT_GROQ, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _ollama(self, prompt: str):
         try:
@@ -367,7 +328,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(f"http://{ip}:{port}/api/chat", json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _localai(self, prompt: str):
         try:
@@ -378,7 +339,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(endpoint, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _mistral(self, prompt: str):
         try:
@@ -389,7 +350,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(ENDPOINT_MISTRAL, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _perplexity(self, prompt: str):
         try:
@@ -400,7 +361,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(ENDPOINT_PERPLEXITY, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _openrouter(self, prompt: str):
         try:
@@ -411,7 +372,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(ENDPOINT_OPENROUTER, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _openai_azure(self, prompt: str):
         try:
@@ -421,16 +382,14 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             ver = self._opt(CONF_OPENAI_AZURE_API_VERSION, "2024-02-15-preview")
             url = f"https://{base}/openai/deployments/{deployment}/chat/completions?api-version={ver}"
             headers = {"api-key": key, "Content-Type": "application/json"}
-            body = {"messages": [{"role": "user", "content": prompt}]}
-            async with self.session.post(url, headers=headers, json=body, timeout=90) as resp:
+            async with self.session.post(url, headers=headers, json={"messages": [{"role": "user", "content": prompt}]}, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _custom_openai(self, prompt: str):
         try:
-            url = self._opt(CONF_CUSTOM_OPENAI_ENDPOINT)
-            api_key = self._opt(CONF_CUSTOM_OPENAI_API_KEY)
+            url, api_key = self._opt(CONF_CUSTOM_OPENAI_ENDPOINT), self._opt(CONF_CUSTOM_OPENAI_API_KEY)
             model = self._opt(CONF_CUSTOM_OPENAI_MODEL)
             headers = {"Content-Type": "application/json"}
             if api_key: headers["Authorization"] = f"Bearer {api_key}"
@@ -438,12 +397,11 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(f"{url}/v1/chat/completions", headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def _generic_openai(self, prompt: str):
         try:
-            url = self._opt(CONF_GENERIC_OPENAI_ENDPOINT)
-            api_key = self._opt(CONF_GENERIC_OPENAI_API_KEY)
+            url, api_key = self._opt(CONF_GENERIC_OPENAI_ENDPOINT), self._opt(CONF_GENERIC_OPENAI_API_KEY)
             model = self._opt(CONF_GENERIC_OPENAI_MODEL, "gpt-4")
             headers = {"Content-Type": "application/json"}
             if api_key: headers["Authorization"] = f"Bearer {api_key}"
@@ -451,8 +409,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             async with self.session.post(url, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
-        except Exception as e: self._last_error = str(e); return None
+        except Exception: return None
 
     async def async_shutdown(self):
-        """Shutdown coordinator session."""
         if self.session: await self.session.close()

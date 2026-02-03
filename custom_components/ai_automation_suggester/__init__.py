@@ -1,15 +1,17 @@
 """The AI Automation Suggester integration.
 
 Changelog:
-- Updated 'ActionView' to interface with Memory. 
-- Added 'save_suggestion' service to write YAML to ai_automations.yaml.
-- Added 'clear_suggestion_history' service to manage history file.
+- Combined original migration and service logic with automatic resource registration.
+- Added automatic creation of ai_automations.yaml.
+- Added static path registration for dashboard card.
 """
 
 import logging
 import uuid
-from datetime import datetime
+import os
 import json
+from datetime import datetime
+from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -31,8 +33,13 @@ from .coordinator import AIAutomationCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# --- NYE KONSTANTER TIL AUTOMATISK SETUP ---
+URL_BASE = "/ai_suggester_static"
+CARD_FILENAME = "ai-automation-suggester-card.js"
+CARD_PATH = f"{URL_BASE}/{CARD_FILENAME}"
+
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate old entry."""
+    """Migrate old entry (BEHOLDT FRA ORIGINAL)."""
     _LOGGER.info("Migrating from version %s", config_entry.version)
     if config_entry.version < CONFIG_VERSION:
         new_data = {**config_entry.data}
@@ -47,12 +54,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the AI Automation Suggester component."""
     hass.data.setdefault(DOMAIN, {})
 
-    # Register API views for the frontend
+    # 1. Registrer statisk sti til JS-kortet (NY AUTOMATISK FUNKTION)
+    static_dir = Path(__file__).parent / "www" / "ai_automation_suggester"
+    if static_dir.exists():
+        hass.http.register_static_path(URL_BASE, str(static_dir), cache_headers=False)
+
+    # Register API views (BEHOLDT FRA ORIGINAL)
     hass.http.register_view(AIAutomationSuggestionsView)
     hass.http.register_view(AIAutomationActionView)
 
     async def handle_generate_suggestions(call: ServiceCall) -> None:
-        """Service handler to trigger a new AI analysis."""
+        """Service handler (BEHOLDT FRA ORIGINAL MED ALLE PARAMETRE)."""
         provider_config = call.data.get(ATTR_PROVIDER_CONFIG)
         custom_prompt = call.data.get(ATTR_CUSTOM_PROMPT)
         all_entities = call.data.get("all_entities", False)
@@ -107,6 +119,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up entry from config UI."""
+    # 2. AUTOMATISK FIL-TJEK OG RESSOURCER (NY FUNKTION)
+    await async_ensure_files(hass)
+    await async_register_resource(hass)
+
     try:
         if CONF_PROVIDER not in entry.data:
             raise ConfigEntryNotReady("Provider not specified in config")
@@ -115,23 +131,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_added_to_hass()
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
-        # --- NYE SERVICES TIL DASHBOARDET START ---
-        
+        # Nye services
         async def handle_save_suggestion(call: ServiceCall):
-            """Service to save a suggestion to ai_automations.yaml."""
             await coordinator.handle_save_suggestion(call)
 
         async def handle_clear_history(call: ServiceCall):
-            """Service to clear history file."""
             await coordinator.handle_clear_history(call)
 
         hass.services.async_register(DOMAIN, "save_suggestion", handle_save_suggestion)
         hass.services.async_register(DOMAIN, "clear_suggestion_history", handle_clear_history)
-        
-        # --- NYE SERVICES TIL DASHBOARDET SLUT ---
 
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
         @callback
@@ -150,15 +160,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Failed to setup integration: %s", err)
         raise ConfigEntryNotReady from err
 
+async def async_ensure_files(hass: HomeAssistant):
+    """Sikrer at ai_automations.yaml eksisterer (NY)."""
+    path = hass.config.path("ai_automations.yaml")
+    if not os.path.exists(path):
+        def create_file():
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write("# AI Generated Automations\n")
+        await hass.async_add_executor_job(create_file)
+
+async def async_register_resource(hass: HomeAssistant):
+    """Registrerer JS kortet automatisk i Lovelace (NY)."""
+    resources = hass.data.get("lovelace", {}).get("resources")
+    if resources:
+        if not any(CARD_PATH in r.get("url", "") for r in resources.async_items()):
+            await resources.async_create_item({"res_type": "module", "url": CARD_PATH})
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload entry."""
+    """Unload entry (BEHOLDT FRA ORIGINAL)."""
     try:
         unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         if unload_ok:
-            # Fjern services ved unload
             hass.services.async_remove(DOMAIN, "save_suggestion")
             hass.services.async_remove(DOMAIN, "clear_suggestion_history")
-            
             coordinator = hass.data[DOMAIN].pop(entry.entry_id)
             await coordinator.async_shutdown()
         return unload_ok
@@ -172,7 +196,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_setup_entry(hass, entry)
 
 # ─────────────────────────────────────────────────────────────
-# API Views classes
+# API Views classes (ALT BEHOLDT FRA ORIGINAL)
 # ─────────────────────────────────────────────────────────────
 
 class AIAutomationSuggestionsView(HomeAssistantView):
@@ -222,15 +246,13 @@ class AIAutomationActionView(HomeAssistantView):
         _LOGGER.info(f"UI Action received: {action} on suggestion {suggestion_id}")
 
         if action == "accept":
-            # For accept, we use our new save_suggestion logic
             for entry_id, coordinator in hass.data[DOMAIN].items():
                 if isinstance(coordinator, AIAutomationCoordinator):
+                    # Vi sender det som en dict da vores nye handle_save_suggestion i coordinator kan håndtere det
                     await coordinator.handle_save_suggestion({"suggestion_id": suggestion_id})
-
             return self.json({"success": True})
         
         elif action == "decline":
-            # Add to memory logic could be placed here
             return self.json({"success": True, "message": "Feedback noted"})
 
         return self.json({"success": False, "error": "Invalid action"}, status_code=400)

@@ -2,7 +2,8 @@
 
 Changelog:
 - Updated 'ActionView' to interface with Memory. 
-- Declining a suggestion now adds it to the 'dislikes' memory database.
+- Added 'save_suggestion' service to write YAML to ai_automations.yaml.
+- Added 'clear_suggestion_history' service to manage history file.
 """
 
 import logging
@@ -31,6 +32,8 @@ from .coordinator import AIAutomationCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old entry."""
+    _LOGGER.info("Migrating from version %s", config_entry.version)
     if config_entry.version < CONFIG_VERSION:
         new_data = {**config_entry.data}
         new_data.pop('scan_frequency', None)
@@ -41,12 +44,15 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the AI Automation Suggester component."""
     hass.data.setdefault(DOMAIN, {})
 
+    # Register API views for the frontend
     hass.http.register_view(AIAutomationSuggestionsView)
     hass.http.register_view(AIAutomationActionView)
 
     async def handle_generate_suggestions(call: ServiceCall) -> None:
+        """Service handler to trigger a new AI analysis."""
         provider_config = call.data.get(ATTR_PROVIDER_CONFIG)
         custom_prompt = call.data.get(ATTR_CUSTOM_PROMPT)
         all_entities = call.data.get("all_entities", False)
@@ -92,11 +98,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     coordinator.SYSTEM_PROMPT = original_prompt
                 coordinator.scan_all = False
                 coordinator.selected_domains = []
-                coordinator.entity_limit = 200
-                coordinator.automation_read_file = False
 
-        except KeyError:
-            raise ServiceValidationError("Provider configuration not found")
         except Exception as err:
             raise ServiceValidationError(f"Failed to generate suggestions: {err}")
 
@@ -104,12 +106,29 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up entry from config UI."""
     try:
         if CONF_PROVIDER not in entry.data:
             raise ConfigEntryNotReady("Provider not specified in config")
 
         coordinator = AIAutomationCoordinator(hass, entry)
+        await coordinator.async_added_to_hass()
         hass.data[DOMAIN][entry.entry_id] = coordinator
+
+        # --- NYE SERVICES TIL DASHBOARDET START ---
+        
+        async def handle_save_suggestion(call: ServiceCall):
+            """Service to save a suggestion to ai_automations.yaml."""
+            await coordinator.handle_save_suggestion(call)
+
+        async def handle_clear_history(call: ServiceCall):
+            """Service to clear history file."""
+            await coordinator.handle_clear_history(call)
+
+        hass.services.async_register(DOMAIN, "save_suggestion", handle_save_suggestion)
+        hass.services.async_register(DOMAIN, "clear_suggestion_history", handle_clear_history)
+        
+        # --- NYE SERVICES TIL DASHBOARDET SLUT ---
 
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -132,16 +151,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady from err
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload entry."""
     try:
         unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         if unload_ok:
+            # Fjern services ved unload
+            hass.services.async_remove(DOMAIN, "save_suggestion")
+            hass.services.async_remove(DOMAIN, "clear_suggestion_history")
+            
             coordinator = hass.data[DOMAIN].pop(entry.entry_id)
             await coordinator.async_shutdown()
         return unload_ok
     except Exception as err:
+        _LOGGER.error("Error unloading: %s", err)
         return False
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload entry."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
 
@@ -150,6 +176,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 # ─────────────────────────────────────────────────────────────
 
 class AIAutomationSuggestionsView(HomeAssistantView):
+    """API View to provide suggestions to the frontend."""
     url = "/api/ai_automation_suggester/suggestions"
     name = "api:ai_automation_suggester:suggestions"
     requires_auth = True
@@ -169,8 +196,8 @@ class AIAutomationSuggestionsView(HomeAssistantView):
                             if not isinstance(item, dict): continue
                             
                             suggestion_entry = {
-                                "id": str(uuid.uuid4()), # Generated dynamic ID
-                                "internal_id": str(item.get("title")), # Used for memory tracking
+                                "id": str(uuid.uuid4()),
+                                "suggestion_id": item.get("suggestion_id", "unknown"),
                                 "title": item.get("title", "New Suggestion"),
                                 "shortDescription": item.get("description", "")[:100] + "...",
                                 "detailedDescription": item.get("description", ""),
@@ -185,6 +212,7 @@ class AIAutomationSuggestionsView(HomeAssistantView):
         return self.json(all_suggestions)
 
 class AIAutomationActionView(HomeAssistantView):
+    """API View to handle actions from the frontend."""
     url = "/api/ai_automation_suggester/{action}/{suggestion_id}"
     name = "api:ai_automation_suggester:action"
     requires_auth = True
@@ -194,22 +222,15 @@ class AIAutomationActionView(HomeAssistantView):
         _LOGGER.info(f"UI Action received: {action} on suggestion {suggestion_id}")
 
         if action == "accept":
-            persistent_notification.async_create(
-                hass,
-                message="Code accepted. Please copy the YAML for now.",
-                title="Automation Accepted"
-            )
+            # For accept, we use our new save_suggestion logic
+            for entry_id, coordinator in hass.data[DOMAIN].items():
+                if isinstance(coordinator, AIAutomationCoordinator):
+                    await coordinator.handle_save_suggestion({"suggestion_id": suggestion_id})
+
             return self.json({"success": True})
         
         elif action == "decline":
-            # Attempt to find the suggestion content to save to memory
-            if DOMAIN in hass.data:
-                for entry_id, coordinator in hass.data[DOMAIN].items():
-                    if isinstance(coordinator, AIAutomationCoordinator):
-                        # Note: In a future improved frontend, we should receive the text directly.
-                        # For now, we acknowledge.
-                        pass
-
+            # Add to memory logic could be placed here
             return self.json({"success": True, "message": "Feedback noted"})
 
         return self.json({"success": False, "error": "Invalid action"}, status_code=400)

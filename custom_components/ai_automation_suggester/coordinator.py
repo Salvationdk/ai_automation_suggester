@@ -1,12 +1,4 @@
-"""Coordinator for AI Automation Suggester.
-
-Changelog:
-- Added cross-compatibility for dict (API) and ServiceCall (UI) inputs.
-- Added support for static dashboard IDs (latest_1, latest_2).
-- Added robust JSON parsing to handle truncated AI responses.
-- Integrated History and Memory loggers.
-- Retained all original AI provider methods.
-"""
+"""Coordinator for AI Automation Suggester v2.0."""
 from __future__ import annotations
 
 import json
@@ -59,7 +51,7 @@ Format:
 """
 
 class AIAutomationCoordinator(DataUpdateCoordinator):
-    """Builds the prompt, sends it to the selected provider, shares results."""
+    """Bygger prompts, sender til AI og håndterer resultater/historik."""
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.hass = hass
@@ -72,6 +64,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         self.entity_limit = 40 
         self.automation_read_file = False
         self.automation_limit = 100
+        self.current_temperature = 0.1 # Standard temperatur
 
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=None)
         self.session = async_get_clientsession(hass)
@@ -93,11 +86,6 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
 
     def _opt(self, key: str, default=None):
         return self.entry.options.get(key, self.entry.data.get(key, default))
-
-    def _budgets(self) -> tuple[int, int]:
-        out_budget = self._opt(CONF_MAX_OUTPUT_TOKENS, self._opt(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS))
-        in_budget = self._opt(CONF_MAX_INPUT_TOKENS, self._opt(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS))
-        return in_budget, out_budget
 
     async def async_added_to_hass(self):
         self.device_registry = dr.async_get(self.hass)
@@ -190,13 +178,11 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
 
     async def handle_save_suggestion(self, call: ServiceCall | dict):
         """Gemmer forslag til ai_automations.yaml eller blueprints."""
-        # Understøtter både ServiceCall (Dashboard) og dict (API View)
         if isinstance(call, dict):
             sug_id = call.get("suggestion_id")
         else:
             sug_id = call.data.get("suggestion_id")
         
-        # Håndter special-ID'er fra dashboardet
         if isinstance(sug_id, str) and sug_id.startswith("latest_"):
             try:
                 idx = int(sug_id.split("_")[1]) - 1
@@ -241,7 +227,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             await self.hass.async_add_executor_job(remove)
         self.data["history"] = []
         self.async_set_updated_data(self.data)
-        persistent_notification.async_create(self.hass, message="Historikken er slettet.", title="AI Suggester")
+        persistent_notification.async_create(self.hass, message="Historik slettet.", title="AI Suggester")
 
     def _parse_json_response(self, response: str) -> list[dict]:
         try: return json.loads(response)
@@ -261,9 +247,9 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
     async def _build_prompt(self, entities: dict, unavailable: list[str]) -> str:
         dislikes = ", ".join(self._memory_cache.get("dislikes", [])) or "None"
         prompt = self.SYSTEM_PROMPT.format(dislikes=dislikes)
-        ent_data = [f"Entity: {k}\nName: {v['friendly_name']}\nState: {v['state']}\n" for k, v in list(entities.items())[:self.entity_limit]]
-        prompt += f"\nActive Entities:\n{''.join(ent_data)}\n"
-        if unavailable: prompt += f"⚠️ BROKEN: {', '.join(unavailable[:30])}\n"
+        ent_data = [f"E: {k}, N: {v['friendly_name']}, S: {v['state']}\n" for k, v in list(entities.items())[:self.entity_limit]]
+        prompt += f"\nEntities:\n{''.join(ent_data)}\n"
+        if unavailable: prompt += f"BROKEN: {', '.join(unavailable[:20])}\n"
         return prompt
 
     async def _dispatch(self, prompt: str) -> str | None:
@@ -277,25 +263,31 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         }
         return await providers[p](prompt) if p in providers else None
 
-    async def _openai(self, prompt: str):
-        try:
-            api_key = self._opt(CONF_OPENAI_API_KEY)
-            model = self._opt(CONF_OPENAI_MODEL, "gpt-4o-mini")
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
-            async with self.session.post(ENDPOINT_OPENAI, headers=headers, json=body, timeout=90) as resp:
-                res = await resp.json()
-                return res["choices"][0]["message"]["content"]
-        except Exception: return None
+    # --- AI Providers med Temperatur Support ---
 
     async def _google(self, prompt: str):
         try:
             api_key = self._opt(CONF_GOOGLE_API_KEY)
             model = self._opt(CONF_GOOGLE_MODEL, "gemini-1.5-flash")
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            async with self.session.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=90) as resp:
+            body = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": self.current_temperature}
+            }
+            async with self.session.post(url, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e: return str(e)
+
+    async def _openai(self, prompt: str):
+        try:
+            api_key = self._opt(CONF_OPENAI_API_KEY)
+            model = self._opt(CONF_OPENAI_MODEL, "gpt-4o-mini")
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
+            async with self.session.post(ENDPOINT_OPENAI, headers=headers, json=body, timeout=90) as resp:
+                res = await resp.json()
+                return res["choices"][0]["message"]["content"]
         except Exception: return None
 
     async def _anthropic(self, prompt: str):
@@ -303,7 +295,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             api_key = self._opt(CONF_ANTHROPIC_API_KEY)
             model = self._opt(CONF_ANTHROPIC_MODEL, "claude-3-5-sonnet-20240620")
             headers = {"X-API-Key": api_key, "Content-Type": "application/json", "anthropic-version": "2023-06-01"}
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1024}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1024, "temperature": self.current_temperature}
             async with self.session.post(ENDPOINT_ANTHROPIC, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["content"][0]["text"]
@@ -314,7 +306,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             api_key = self._opt(CONF_GROQ_API_KEY)
             model = self._opt(CONF_GROQ_MODEL, "llama3-70b-8192")
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
             async with self.session.post(ENDPOINT_GROQ, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
@@ -324,7 +316,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
         try:
             ip, port = self._opt(CONF_OLLAMA_IP_ADDRESS), self._opt(CONF_OLLAMA_PORT)
             model = self._opt(CONF_OLLAMA_MODEL, "llama3")
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False, "options": {"temperature": self.current_temperature}}
             async with self.session.post(f"http://{ip}:{port}/api/chat", json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["message"]["content"]
@@ -335,7 +327,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             ip, port = self._opt(CONF_LOCALAI_IP_ADDRESS), self._opt(CONF_LOCALAI_PORT)
             model = self._opt(CONF_LOCALAI_MODEL, "gpt-4")
             endpoint = f"http://{ip}:{port}/v1/chat/completions"
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
             async with self.session.post(endpoint, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
@@ -346,7 +338,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             api_key = self._opt(CONF_MISTRAL_API_KEY)
             model = self._opt(CONF_MISTRAL_MODEL, "mistral-large-latest")
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
             async with self.session.post(ENDPOINT_MISTRAL, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
@@ -357,7 +349,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             api_key = self._opt(CONF_PERPLEXITY_API_KEY)
             model = self._opt(CONF_PERPLEXITY_MODEL, "llama-3-sonar-large-32k-online")
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
             async with self.session.post(ENDPOINT_PERPLEXITY, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
@@ -368,7 +360,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             api_key = self._opt(CONF_OPENROUTER_API_KEY)
             model = self._opt(CONF_OPENROUTER_MODEL, "meta-llama/llama-3-70b-instruct")
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
             async with self.session.post(ENDPOINT_OPENROUTER, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
@@ -382,7 +374,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             ver = self._opt(CONF_OPENAI_AZURE_API_VERSION, "2024-02-15-preview")
             url = f"https://{base}/openai/deployments/{deployment}/chat/completions?api-version={ver}"
             headers = {"api-key": key, "Content-Type": "application/json"}
-            async with self.session.post(url, headers=headers, json={"messages": [{"role": "user", "content": prompt}]}, timeout=90) as resp:
+            async with self.session.post(url, headers=headers, json={"messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
         except Exception: return None
@@ -393,7 +385,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             model = self._opt(CONF_CUSTOM_OPENAI_MODEL)
             headers = {"Content-Type": "application/json"}
             if api_key: headers["Authorization"] = f"Bearer {api_key}"
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
             async with self.session.post(f"{url}/v1/chat/completions", headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]
@@ -405,7 +397,7 @@ class AIAutomationCoordinator(DataUpdateCoordinator):
             model = self._opt(CONF_GENERIC_OPENAI_MODEL, "gpt-4")
             headers = {"Content-Type": "application/json"}
             if api_key: headers["Authorization"] = f"Bearer {api_key}"
-            body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": self.current_temperature}
             async with self.session.post(url, headers=headers, json=body, timeout=90) as resp:
                 res = await resp.json()
                 return res["choices"][0]["message"]["content"]

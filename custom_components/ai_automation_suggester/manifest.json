@@ -1,15 +1,21 @@
 {
   "domain": "ai_automation_suggester",
   "name": "AI Automation Suggester",
-  "codeowners": ["@salvationdk"],
+  "version": "2.0.0",
+  "documentation": "https://github.com/Salvationdk/ai_automation_suggester",
+  "issue_tracker": "https://github.com/Salvationdk/ai_automation_suggester/issues",
+  "dependencies": [
+    "http",
+    "persistent_notification",
+    "lovelace"
+  ],
+  "codeowners": ["@Salvationdk"],
   "config_flow": true,
-  "documentation": "https://github.com/salvationdk/ai_automation_suggester",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/salvationdk/ai_automation_suggester/issues",
   "requirements": [
     "openai>=1.0.0",
-    "aiohttp>=3.9.0", 
+    "aiohttp>=3.9.0",
     "PyYAML>=6.0"
   ],
-  "version": "2.0.0"
+  "homeassistant": "2026.1.0"
 }
